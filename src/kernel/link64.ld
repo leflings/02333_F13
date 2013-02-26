@@ -43,6 +43,7 @@ SECTIONS
    AT (LOADADDR(.rodata) + SIZEOF (.rodata))
   {
    * (.data) /* Any remaining data sections. */
+   . = ALIGN(8);
   } : data
   
   start_of_bss = ABSOLUTE(.);

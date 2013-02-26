@@ -12,8 +12,8 @@
 
 /* Macros */
 
-#define SYSCALL_ARGUMENTS (thread_table[current_thread].data.registers.\
-                           integer_registers)
+#define SYSCALL_ARGUMENTS (thread_table[cpu_private_data.thread_index].\
+                           data.registers.integer_registers)
 /*!< Macro used in the system call switch to access the arguments to the 
      system call. */
 
@@ -57,8 +57,10 @@ struct context
       stored as the user mode processes can only use a code and a data segment
       descriptor. We assume that the cs is set to the code and all the rest
       of the segment registers are set to the data segment all the time. */
+ char     from_interrupt;
+ /*!< Is set to 1 if the context is saved during the processing of interrupts.
+      Set to 0 otherwise. */
 };
-
 
 /*! Defines a thread. */
 union thread
@@ -71,6 +73,16 @@ union thread
   int            owner;         /*!< The index identifies the process that owns
                                      this thread. The owner can be retrieved from
                                      the process_table by using the index.  */
+  int            next;          /*!< This is an index into the thread_table.
+                                     The index corresponds to the thread
+                                     following this thread in a linked list.
+                                     A thread can be in a number of linked
+                                     lists. */
+  unsigned long  list_data;     /*!< This member variable has different
+                                     meaning depending on what list the thread
+                                     resides in. In the timer queue this
+                                     variable is either an absolute time or a
+                                     delta time.*/
  }               data;
  char            padding[1024];
 };
@@ -188,7 +200,23 @@ struct executable_image
                                                  executable image in the list
                                                  will have a next pointer
                                                  equal to 0, i.e., null. */
- const struct Elf64_Ehdr              elf_image; /*!< The ELF image file header. */
+ const struct Elf64_Ehdr              elf_image; /*!< The ELF image file 
+                                                      header. */
+};
+
+/*! Defines the structure pointed to by the kernel GS_BASE. Every CPU has one
+    of these. */
+struct CPU_private
+{
+ unsigned long  scratch_space;   /*!< Temporary storage used during  context
+                                      switches. */
+ unsigned long  page_table_root; /*!< The root of the page table in use on
+                                      the CPU. */
+ int            thread_index;    /*!< Index into thread_table of the thread
+                                      executing on the CPU. The idle thread
+                                      has index -1. */
+ int            ticks_left_of_time_slice;
+                                 /*!< Can be used by a preemptive scheduler. */
 };
 
 /* Variable declarations */
@@ -209,10 +237,6 @@ extern int
 executable_table_size;
 /*!< The number of executable programs in the executable_table */
 
-extern int
-current_thread;
-/*!< The index, into thread_table, of the currently running thread. */
-
 extern const struct executable_image*
 ELF_images_start;
 /*!< The first executable image in the linked list of executable images. */
@@ -230,6 +254,29 @@ first_available_memory_byte;
 extern unsigned long
 memory_size;
 /*!< Size, in bytes, of the memory. */
+
+/*! \note Linked lists are terminated with a thread with a next index of -1. */
+
+extern struct thread_queue
+ready_queue;
+/*!< The ready queue. */
+
+extern int
+timer_queue_head;
+/*!< The index, into thread_table, of the head of the timer queue. The timer
+     queue is a list of threads blocked waiting for the system clock to reach
+     a certain time.  This variable is set to -1 if there are no threads in
+     the timer queue. */
+
+extern long
+system_time;
+/*!< This variable holds the current system time. The system time is the
+     number of clock  ticks since system start. There are 200 clock ticks
+     per second. */
+
+extern struct CPU_private
+cpu_private_data;
+/*!< Holds data private to the CPU. */
 
 /* Function declarations */
 
@@ -285,6 +332,11 @@ system_call_handler(void);
 extern int
 system_call_implementation(void);
 
+/*! This function gets called from the interrupt handler and manages timer
+    interrupts. */
+extern void
+timer_interrupt_handler(void);
+
 /*! Outputs a string to the bochs console. */
 extern void
 kprints(const char* const string
@@ -295,6 +347,21 @@ kprints(const char* const string
 extern void
 kprinthex(const register long value
           /*!< the value to be written */);
+
+/*! One of two entry points to the scheduler. This function is called at the
+    end of the system call handler. */
+extern void
+scheduler_called_from_system_call_handler(const register int schedule
+                                          /*!< 1 iff scheduling decisions have 
+                                               to be remade. */);
+ 
+/*! One of two entry points to the scheduler. This function is called from the 
+    timer interrupt handler. */
+extern void
+scheduler_called_from_timer_interrupt_handler(const register int thread_changed
+                                              /*!< 1 iff the interrupt code 
+                                                   has updated scheduling data 
+                                                   structures.  */); 
 
 /*! Wrapper for a byte out instruction. */
 inline static void

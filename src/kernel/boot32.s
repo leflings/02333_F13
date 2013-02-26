@@ -13,8 +13,6 @@
  # boot image. More information on the multiboot standard can be found
  # at http://www.gnu.org/software/grub/manual/multiboot/
  .global _start
- .global TSS_descriptor
- .global pml4_base
 
 _start:
  jmp    after_multiboot_header
@@ -128,6 +126,9 @@ after_multiboot_header:
  # Enable paging, write protection etc. This will also activate 64-bit mode.
  movl   $0x80010033,%eax
  movl   %eax,%cr0
+
+ movl   $pml4_base,%ebx
+ movl   $TSS_descriptor,%edx
 
  # We can now do a long jump into the 64-bit code (in boot64.s)
  ljmp   $24,$start_of_64bit_code

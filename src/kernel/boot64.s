@@ -4,10 +4,14 @@
 
  .text
  .global _start
- .global executable_table_size
- .global executable_table
+ .global cpu_private_data
+	
 # This is the 64-bit kernel entry point
 _start:
+ # Save addresses carried over from the 32-bit kernel
+ mov    %rbx,cpu_private_data+8
+ mov    %rdx,%r15
+
  # We can now set the kernel stack
  mov    $stack,%rsp
  
@@ -33,9 +37,9 @@ bss_clear_loop:
  wrmsr  # must use the wrmsr instruction to write a 64-bit value to FS, GS 
         # and KernelGS
  
- # And the GS base to 0
+ # And the GS base to point to the private data of the CPU.
  mov    $0xc0000101,%ecx
- xor    %eax,%eax
+ mov    $cpu_private_data,%eax
  xor    %edx,%edx
  wrmsr
 
@@ -45,15 +49,81 @@ bss_clear_loop:
  xor    %edx,%edx
  wrmsr
 
- # And reload FS and GS
- mov    $32,%eax
- mov    %eax,%fs
- mov    %eax,%gs
- 
  # We do not set a new GDT since all the descriptors we are interested in are
  # there already and there is no problem for us to have it below the 4Gbyte
  # barrier.
- 
+
+ # We set up a TSS descriptor:
+ mov    $TSS,%rax
+ mov    %rax,%rbx
+ shl    $16,%ebx
+ or     $0x67,%ebx
+ mov    %ebx,(%r15)
+ mov    %rax,%rbx
+ mov    %rax,%rcx
+ and    $0xff000000,%ebx
+ shr    $16,%ecx
+ and    $0xff,%ecx
+ or     %ecx,%ebx
+ or     $0x8900,%ebx
+ mov    %ebx,4(%r15)
+ shr    $32,%rax
+ mov    %eax,8(%r15)
+
+ # Set up the entire interrupt descriptor table to point to a dummy handler.
+ # There are 256 entries in the table
+ mov    $256,%rdx
+ mov    $IDT,%rbp
+ mov    $interrupt_entries,%rcx
+interrupt_setup_loop:
+ mov    %ecx,%ebx
+ and    $0xffff,%ebx
+ or     $24*0x10000,%ebx
+ mov    %ebx,(%rbp)
+ mov    %ecx,%ebx
+ and    $0xffff0000,%ebx
+ or     $0x8e00,%ebx
+ mov    %ebx,4(%rbp)
+ mov    %rcx,%rax
+ shr    $32,%rax
+ mov    %eax,8(%rbp)
+ xor    %rax,%rax
+ mov    %eax,12(%rbp)
+ add    $16,%rbp
+ add    $16,%rcx
+ dec    %rdx
+ jnz    interrupt_setup_loop
+
+ # Write the address of the timer interrupt handler into the interrupt handler
+ # table
+ mov    $timer_interrupt,%rax
+ mov    $IDT+16*32,%rbp
+ mov    %eax,%ebx
+ and    $0xffff,%ebx
+ or     $24*0x10000,%ebx
+ mov    %ebx,(%rbp)
+ mov    %eax,%ebx
+ and    $0xffff0000,%ebx
+ or     $0x8e00,%ebx
+ mov    %ebx,4(%rbp)
+ shr    $32,%rax
+ mov    %eax,8(%rbp)
+
+ # Force the CPU to use the new TSS
+ mov    $40,%eax
+ ltr    %ax
+
+ # Load the new interrupt handler table
+ sub    $16,%rsp
+ mov    $16*256-1,%rax
+ mov    %ax,6(%rsp)
+ mov    $IDT,%rax
+ mov    %rax,8(%rsp)
+ mov    %rsp,%rax
+ add    $6,%rax
+ lidt   (%rax)
+ add    $16,%rsp
+
  # We set up the registers necessary to use syscall
  # The registers are STAR, LSTAR, CSTAR and SFMASK.
  # LSTAR holds the target address of system calls in
@@ -109,3 +179,13 @@ bss_clear_loop:
  call   initialize
 
  jmp    return_to_user_mode
+
+ .data
+ .align 16
+cpu_private_data:
+ .quad  0
+ .quad  0
+ .int   -1
+ .int   1
+	
+	

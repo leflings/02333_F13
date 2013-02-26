@@ -36,4 +36,13 @@
  *  passed in rdi. */
 #define SYSCALL_CREATEPROCESS   (5)
 
+/*! System call that blocks the calling thread a number of clocks ticks. The
+   number of clock ticks is passed in rdi. There are 200 clock
+   ticks per second.*/
+#define SYSCALL_PAUSE           (6)
+
+/*! System call that returns the current system time. The system time is the 
+    number of clock ticks since system start. There are 200 clock ticks per 
+    second. */
+#define SYSCALL_TIME            (7)
 #endif

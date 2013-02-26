@@ -1,26 +1,31 @@
-/*! \file
- * 	\brief The first user program - it creates a processe and then waits
- *             for it to finish. The entire process is repeated over and over.
+/*! \file main.c
+ *      \brief The first user program - it creates two processes and then 
+ *             goes into an never ending loop in which Ping is printed every
+ *             100th clock tick.
  *
  */
 
+
 #include <scwrapper.h>
 
-void
+void 
 main(int argc, char* argv[])
 {
+ if (0 != createprocess(1))
+ {
+  prints("createprocess of program 1 failed.\n");
+  return;
+ }
+
+ if (0 != createprocess(2))
+ {
+  prints("createprocess of program 2 failed.\n");
+  return;
+ }
+
  while(1)
  {
-  prints("Process 0: Trying to start process 1.\n");
-  /* Try to create and run process 1. */
-  if (0 != createprocess(1))
-  {
-   prints("createprocess failed.\n");
-  }
-  else
-  {
-   prints("Process 0: Process 1 terminated.\n");
-  }
-  debugger();
+  pause(100);
+  prints("Ping\n");
  }
 }

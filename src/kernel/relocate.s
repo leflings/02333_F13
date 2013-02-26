@@ -1,5 +1,6 @@
 /**
- * \file relocate.s This file contains 64-bit code that calls the kernels
+ * \file relocate.s
+ * \brief This file contains 64-bit code that calls the kernels
  *  64-bit entry code.
  */
 

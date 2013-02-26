@@ -1,10 +1,11 @@
 /*!
- * \file
+ * \file kernel.c
  * \brief
- *  This is the main source code for the kernel. Here all important variables
- *  will be initialized.
+ *  This is the main source code for the kernel.
  */
+
 #include "kernel.h"
+#include "threadqueue.h"
 
 /* Note: Look in kernel.h for documentation of global variables and
    functions. */
@@ -17,8 +18,8 @@ thread_table[MAX_NUMBER_OF_THREADS];
 struct process
 process_table[MAX_NUMBER_OF_PROCESSES];
 
-int
-current_thread;
+struct thread_queue
+ready_queue;
 
 struct executable
 executable_table[MAX_NUMBER_OF_PROCESSES];
@@ -34,6 +35,13 @@ unsigned long memory_size;
 const struct executable_image* ELF_images_start;
 
 const char* ELF_images_end;
+/* Initialize the timer queue to be empty. */
+int
+timer_queue_head=-1;
+
+/* Initialize the system time to be 0. */
+long
+system_time=0;
 
 /* Function definitions */
 
@@ -189,6 +197,9 @@ initialize(void)
   process_table[i].threads=0;    /* No executing process has less than 1
                                     thread. */
  }
+
+ /* Initialize the ready queue. */
+ thread_queue_init(&ready_queue);
 
  /* Go through the linked list of executable images and verify that they
     are correct. At the same time build the executable_table. */
@@ -381,16 +392,37 @@ initialize(void)
      have been allocated at this point. */
   thread_table[0].data.owner=0;  /* 0 is the index of the first process. */
 
-  /* We reset all flags. */
-  thread_table[0].data.registers.integer_registers.rflags=0;
+  /* We reset all flags and enable interrupts */
+  thread_table[0].data.registers.integer_registers.rflags=0x200;
 
   /* And set the start address. */
   thread_table[0].data.registers.integer_registers.rip =
    prepare_process_ret_val.first_instruction_address;
 
   /* Finally we set the current thread. */
-  current_thread=0;
+  cpu_private_data.thread_index = 0;
  }
+
+ /* Set up the timer hardware to generate interrupts 200 times a second. */
+ outb(0x43, 0x36);
+ outb(0x40, 78);
+ outb(0x40, 23);
+
+ /* Now we set up the interrupt controller to allow timer interrupts. */
+ outb(0x20, 0x11);
+ outb(0xA0, 0x11);
+
+ outb(0x21, 0x20);
+ outb(0xA1, 0x28);
+
+ outb(0x21, 1<<2);
+ outb(0xA1, 2);
+
+ outb(0x21, 1);
+ outb(0xA1, 1);
+
+ outb(0x21, 0xfe);
+ outb(0xA1, 0xff);
 
  kprints("\n\n\nThe kernel has booted!\n\n\n");
  /* Now go back to assembly language code and let the process run. */
@@ -417,5 +449,170 @@ allocate_thread(void)
 extern void
 system_call_handler(void)
 {
- system_call_implementation();
+ register int schedule = 0;
+
+ /* Reset the interrupt flag indicating that the context of the caller was
+    saved by the system call routine. */
+ thread_table[cpu_private_data.thread_index].data.registers.from_interrupt=0;
+
+ switch(SYSCALL_ARGUMENTS.rax)
+ {
+  case SYSCALL_PAUSE:
+  {
+   register int  tmp_thread_index;
+   unsigned long timer_ticks=SYSCALL_ARGUMENTS.rdi;
+
+   /* Set the return value before doing anything else. We will switch to a new
+      thread very soon! */
+   SYSCALL_ARGUMENTS.rax=ALL_OK;
+
+   if (0 == timer_ticks)
+   {
+    /* We should not wait if we are asked to wait for less then one tick. */
+    break;
+   }
+
+   /* Get the current thread. */
+   tmp_thread_index=cpu_private_data.thread_index;
+
+   /* Force a re-schedule. */
+   schedule=1;
+
+   /* And insert the thread into the timer queue. */
+
+   /* The timer queue is a linked list of threads. The head (first entry)
+      (thread) in the list has a list_data field that holds the number of
+      ticks to wait before the thread is made ready. The next entries (threads)
+      has a list_data field that holds the number of ticks to wait after the
+      previous thread is made ready. This is called to use a delta-time and
+      makes the code to test if threads should be made ready very quick. It
+      also, unfortunately, makes the code that insert code into the queue
+      rather complex. */
+
+   /* If the queue is empty put the thread as only entry. */
+   if (-1 == timer_queue_head)
+   {
+    thread_table[tmp_thread_index].data.next=-1;
+    thread_table[tmp_thread_index].data.list_data=timer_ticks;
+    timer_queue_head=tmp_thread_index;
+   }
+   else
+   {
+    /* Check if the thread should be made ready before the head of the
+       previous timer queue. */
+    register int curr_timer_queue_entry=timer_queue_head;
+
+    if (thread_table[curr_timer_queue_entry].data.list_data>timer_ticks)
+    {
+     /* If so set it up as the head in the new timer queue. */
+
+     thread_table[curr_timer_queue_entry].data.list_data-=timer_ticks;
+     thread_table[tmp_thread_index].data.next=curr_timer_queue_entry;
+     thread_table[tmp_thread_index].data.list_data=timer_ticks;
+     timer_queue_head=tmp_thread_index;
+    }
+    else
+    {
+     register int prev_timer_queue_entry = curr_timer_queue_entry;
+
+     /* Search until the end of the queue or until we found the right spot. */
+     while((-1 != thread_table[curr_timer_queue_entry].data.next) &&
+           (timer_ticks>=thread_table[curr_timer_queue_entry].data.list_data))
+     {
+      timer_ticks-=thread_table[curr_timer_queue_entry].data.list_data;
+      prev_timer_queue_entry=curr_timer_queue_entry;
+      curr_timer_queue_entry=thread_table[curr_timer_queue_entry].data.next;
+     }
+
+
+     if (timer_ticks>=thread_table[curr_timer_queue_entry].data.list_data)
+     {
+      /* Insert the thread into the queue after the existing entry. */
+      thread_table[tmp_thread_index].data.next=
+       thread_table[curr_timer_queue_entry].data.next;
+      thread_table[curr_timer_queue_entry].data.next=tmp_thread_index;
+      thread_table[tmp_thread_index].data.list_data=timer_ticks-
+       thread_table[curr_timer_queue_entry].data.list_data;
+     }
+     else
+     {
+      /* Insert the thread into the queue before the existing entry. */
+      thread_table[tmp_thread_index].data.next=
+       curr_timer_queue_entry;
+      thread_table[prev_timer_queue_entry].data.next=tmp_thread_index;
+      thread_table[tmp_thread_index].data.list_data=timer_ticks;
+      thread_table[curr_timer_queue_entry].data.list_data-=timer_ticks;
+     }
+    }
+   }
+   break;
+  }
+
+  case SYSCALL_TIME:
+  {
+   /* Returns the current system time to the program. */
+   SYSCALL_ARGUMENTS.rax=system_time;
+   break;
+  }
+
+  default:
+  {
+   schedule = system_call_implementation();
+   break;
+  }
+ }
+
+ scheduler_called_from_system_call_handler(schedule);
+}
+
+extern void
+timer_interrupt_handler(void)
+{
+ register int thread_changed=0;
+ /*!< Interrupt hander code may set this variable to 0. The variable is
+      used as input to the scheduler to indicate if the interrupt code has
+      updated scheduling data structures. */
+
+ /* Increment system time. */
+ system_time++;
+
+ /* Check if there are any thread that we should make ready.
+    First check if there are any threads at all in the timer
+    queue. */
+ if (-1 != timer_queue_head)
+ {
+  /* Then decrement the list_data in the head. */
+  thread_table[timer_queue_head].data.list_data-=1;
+
+  /* Then remove all elements including with a list_data equal to zero
+     and insert them into the ready queue. These are the threads that
+     should be woken up. */
+  while((-1 != timer_queue_head) &&
+        /* We remove all entries less than or equal to 0. Equality should be
+           enough but checking with less than or equal may hide the symptoms
+           of some bugs and make the system more stable. */
+        (thread_table[timer_queue_head].data.list_data<=0))
+  {
+   register int tmp_thread_index=timer_queue_head;
+   /* Remove the head element.*/
+   timer_queue_head=thread_table[tmp_thread_index].data.next;
+
+   /* Let the woken thread run if the CPU is not running any thread. */
+   if (-1 == cpu_private_data.thread_index)
+   {
+    cpu_private_data.thread_index = tmp_thread_index;
+    thread_changed=1;
+   }
+   else
+   {
+    /* Or insert it into the ready queue. */
+    thread_queue_enqueue(&ready_queue, tmp_thread_index);
+   }
+  }
+ }
+
+ scheduler_called_from_timer_interrupt_handler(thread_changed);
+
+ /* Acknowledge interrupt so that new interrupts can be sent to the CPU. */
+ outb(0x20, 0x20);
 }

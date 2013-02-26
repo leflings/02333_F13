@@ -87,4 +87,33 @@ createprocess(const int executable)
  return return_value;
 }
 
+/*! Wrapper for the system call that pauses the process for a 
+ *  specified number of ticks. 
+ *  @param ticks integer holding the number of ticks the process should 
+ *         be paused.
+ */
+static inline unsigned long
+pause(const int ticks)
+{
+ unsigned long return_value;
+ __asm volatile("syscall" : 
+                 "=a" (return_value) :
+                 "a" (SYSCALL_PAUSE), "D" (ticks) : 
+                 "cc", "%r11", "%rcx");
+ return return_value;
+}
+
+/*! Wrapper for the system call that returns the current system time 
+ *  in ticks.
+ */
+static inline unsigned long
+time(void)
+{
+ unsigned long return_value;
+ __asm volatile("syscall" : 
+                 "=a" (return_value) :
+                 "a" (SYSCALL_TIME) : 
+                 "cc", "%rcx", "%r11");
+ return return_value;
+}
 #endif
