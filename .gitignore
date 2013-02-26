@@ -1,2 +1,4 @@
 objects/*
 doc/*
+.project
+.cproject
