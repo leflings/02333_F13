@@ -81,6 +81,18 @@ update_memory_protection(const register unsigned long page_table,
                          const register unsigned long length,
                          const register unsigned long flags)
 {
+  unsigned long* pte_entry = GET_PTE_ENTRY_POINTER(page_table, addr);
+  int entries = length / (4*1024);
+  unsigned long f = 0;
+  int i;
+  f |= (flags & 1) ? 0 : (1 << 63); /* can it execute? */
+  f |= (flags & 8) ? 4 : 0; /* only accessible by kernel? */
+  f |= (flags & 2) ? 2 : 0; /* read/write? or just read */
+
+  for(i = 0; i < entries; i++)
+  {
+    *(pte_entry+i) |= f;
+  }
 }
 
 /* Change this function in task A4. */

@@ -92,13 +92,8 @@ prepare_process(const struct Elf64_Ehdr* elf_image,
  /* Allocate memory for the page table and for the process' memory. All of 
     this is allocated in a single memory block. The memory block is set up so
     that it cannot be de-allocated via kfree. */
- kprints("allocating\n");
  long               address_to_memory_block = 
   kalloc(memory_footprint_size+19*4*1024, process, ALLOCATE_FLAG_KERNEL);
- kprints("done allocating : ");
- kprinthex(address_to_memory_block);
- kprints("\n");
-
 
  struct prepare_process_return_value ret_val = {0, 0};
 
@@ -127,12 +122,10 @@ prepare_process(const struct Elf64_Ehdr* elf_image,
   /* Build the pml4 table. */
   dst = (unsigned long*) (address_to_memory_block);
   *dst = (address_to_memory_block+4096) | 7;
-  kprints("Got this far..\n");
 
   /* Build the pdp table. */
   dst = (unsigned long*) (address_to_memory_block+4096);
   *dst = (address_to_memory_block+2*4096) | 7;
-  kprints("Got this far..\n");
 
   /* Build the pd table. */
   dst = (unsigned long*) (address_to_memory_block+2*4096);
@@ -140,7 +133,6 @@ prepare_process(const struct Elf64_Ehdr* elf_image,
   {
    *dst++ = (address_to_memory_block+(3+i)*4096) | 7;
   }
-  kprints("Got this far..\n");
 
   /* Copy the rest of the kernel page table. */
   dst = (unsigned long*) (address_to_memory_block + 3*4*1024);
@@ -148,7 +140,6 @@ prepare_process(const struct Elf64_Ehdr* elf_image,
   {
    *dst++ = *src++;
   }
-  kprints("Got this far..\n");
  }
 
  /* Update the start of the block to be after the page table. */
