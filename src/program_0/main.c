@@ -65,7 +65,7 @@ main(int argc, char* argv[])
     break;
    }
 
-   prints(".");
+   prints(".\n");
 
    /* Keep track of how much memory we have allocated... */
    total_memory_size+=blocks[clock].size;
@@ -87,7 +87,7 @@ main(int argc, char* argv[])
     prints("Memory block free failed!\n");
     break;
    }
-   prints("*");
+   prints("*\n");
    total_memory_size-=blocks[clock].size;
   }
  }
