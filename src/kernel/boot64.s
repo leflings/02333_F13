@@ -1,6 +1,5 @@
 # This file holds long mode assembly code.
 # WARNING: This code, like most assembly code, is far from easy to understand.
-#  Take help from a teaching assistant!
 
  .text
  .global _start
@@ -8,8 +7,7 @@
 	
 # This is the 64-bit kernel entry point
 _start:
- # Save addresses carried over from the 32-bit kernel
- mov    %rbx,cpu_private_data+8
+ # Save addresses carried over from the 32-bit kernel in temporary registers
  mov    %rdx,%r15
 
  # We can now set the kernel stack
@@ -29,7 +27,18 @@ bss_clear_loop:
  add    $8,%rbp
  sub    $8,%rax
  jnz    bss_clear_loop
-		
+
+ # Save addresses carried over from the 32-bit kernel in temporary registers
+ mov    %rbx,cpu_private_data+8
+ # Set up the kernel page table root.
+ movq   %rbx,kernel_page_table_root	
+
+ # Set the memory_size variable. We need to convert from kbytes to bytes.
+ # That means multiplying with 1024 which is the same thing as shifting ten
+ # bits.
+ shl    $10,%rdi
+ mov    %rdi,memory_size
+
  # Set the FS base to 0
  mov    $0xc0000100,%ecx
  xor    %eax,%eax
@@ -169,12 +178,7 @@ interrupt_setup_loop:
  add    $4096-1,%rax
  and    $-4096,%rax
  mov    %rax,first_available_memory_byte
-
- # Set the highest available memory address. For now this is just a hack.
- # The memory management code will be improved in later tasks.
- mov	$(32768-1024-64)*1024,%rax
- mov    %rax,memory_size
-
+	
  # We can now switch to c!
  call   initialize
 

@@ -11,6 +11,7 @@ PHDRS
 
 SECTIONS
 {
+  kernel64_start = 0x00115000;
   . = SIZEOF_HEADERS;
 
   /* You can make to image to be much more compact. This link script

@@ -54,6 +54,10 @@ after_multiboot_header:
                               # the BIOS keeps from us
  jl     halt_the_machine      # Yikes! Too little memory
 
+ # Set the memory_size variable to the amount of available memory
+ # in kilobytes. This value will be adjusted later to bytes.
+ movl   %eax,memory_size
+
  # Set a stack so that we can check for CPUID instruction
  movl   $stack_32bit,%esp
 
@@ -129,7 +133,8 @@ after_multiboot_header:
 
  movl   $pml4_base,%ebx
  movl   $TSS_descriptor,%edx
-
+ movl   memory_size,%edi
+	
  # We can now do a long jump into the 64-bit code (in boot64.s)
  ljmp   $24,$start_of_64bit_code
 
@@ -235,3 +240,5 @@ pte_page_15:
  .align  8
  .skip   32
 stack_32bit:
+memory_size:
+ .int    0

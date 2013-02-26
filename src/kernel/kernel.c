@@ -6,6 +6,7 @@
 
 #include "kernel.h"
 #include "threadqueue.h"
+#include "mm.h"
 
 /* Note: Look in kernel.h for documentation of global variables and
    functions. */
@@ -27,10 +28,7 @@ executable_table[MAX_NUMBER_OF_PROCESSES];
 int
 executable_table_size;
 
-/* The following four variables are set by the assembly code. */
-unsigned long first_available_memory_byte;
-
-unsigned long memory_size;
+/* The following two variables are set by the assembly code. */
 
 const struct executable_image* ELF_images_start;
 
@@ -90,15 +88,63 @@ prepare_process(const struct Elf64_Ehdr* elf_image,
                                        (((char*) (elf_image)) +
                                         elf_image->e_phoff));
  unsigned long      used_memory = 0;
- unsigned long      address_of_first_instruction = 0;
+
+ /* Allocate memory for the page table and for the process' memory. All of 
+    this is allocated in a single memory block. The memory block is set up so
+    that it cannot be de-allocated via kfree. */
+ long               address_to_memory_block = 
+  kalloc(memory_footprint_size+19*4*1024, process, ALLOCATE_FLAG_KERNEL);
+
  struct prepare_process_return_value ret_val = {0, 0};
 
+
  /* First check that we have enough memory. */
- if (first_available_memory_byte + memory_footprint_size >= memory_size)
+ if (0 >= address_to_memory_block)
  {
   /* No, we don't. */
   return ret_val;
  }
+
+ ret_val.page_table_address = address_to_memory_block;
+
+ {
+  /* Create a page table for the process. */
+  unsigned long* dst = (unsigned long*) address_to_memory_block;
+  unsigned long* src = (unsigned long*) (kernel_page_table_root + 3*4*1024);
+  register int i;
+
+  /* Clear the first frames. */
+  for(i=0; i<3*4*1024/8; i++)
+  {
+   *dst = 0;
+  }
+
+  /* Build the pml4 table. */
+  dst = (unsigned long*) (address_to_memory_block);
+  *dst = (address_to_memory_block+4096) | 7;
+
+  /* Build the pdp table. */
+  dst = (unsigned long*) (address_to_memory_block+4096);
+  *dst = (address_to_memory_block+2*4096) | 7;
+
+  /* Build the pd table. */
+  dst = (unsigned long*) (address_to_memory_block+2*4096);
+  for(i=0; i<16; i++)
+  {
+   *dst++ = (address_to_memory_block+(3+i)*4096) | 7;
+  }
+
+  /* Copy the rest of the kernel page table. */
+  dst = (unsigned long*) (address_to_memory_block + 3*4*1024);
+  for(i=0; i<(16*1024*4/8); i++)
+  {
+   *dst++ = *src++;
+  }
+ }
+
+ /* Update the start of the block to be after the page table. */
+
+ address_to_memory_block += 19*4*1024;
 
  /* Scan through the program header table and copy all PT_LOAD segments to
     memory. Perform checks at the same time.*/
@@ -110,7 +156,7 @@ prepare_process(const struct Elf64_Ehdr* elf_image,
   if (PT_LOAD == program_header[program_header_index].p_type)
   {
    /* Calculate destination adress. */
-   unsigned long* dst = (unsigned long *) (first_available_memory_byte + 
+   unsigned long* dst = (unsigned long *) (address_to_memory_block + 
                                            used_memory);
 
    /* Check for odd things. */
@@ -154,13 +200,20 @@ prepare_process(const struct Elf64_Ehdr* elf_image,
     }
    }
 
+   /* Set the permission bits on the loaded segment. */
+   update_memory_protection(ret_val.page_table_address,
+                            program_header[program_header_index].p_vaddr+
+                             address_to_memory_block,
+                            program_header[program_header_index].p_memsz,
+                            program_header[program_header_index].p_flags&7);
+
    /* Finally update the amount of used memory. */
    used_memory += program_header[program_header_index].p_memsz;
   }
  }
 
  /* Find out the address to the first instruction to be executed. */
- ret_val.first_instruction_address = first_available_memory_byte +
+ ret_val.first_instruction_address = address_to_memory_block +
                                      elf_image->e_entry;
 
  /* Claim the memory. */
@@ -175,6 +228,18 @@ prepare_process(const struct Elf64_Ehdr* elf_image,
 void
 cleanup_process(const int process)
 {
+ register unsigned int i;
+
+ for(i=0; i<memory_pages; i++)
+ {
+  if (page_frame_table[i].owner == process)
+  {
+   page_frame_table[i].owner=-1;
+   page_frame_table[i].free_is_allowed=1;
+  }
+ }
+
+ cpu_private_data.page_table_root = kernel_page_table_root;
 }
 
 void
@@ -200,6 +265,41 @@ initialize(void)
 
  /* Initialize the ready queue. */
  thread_queue_init(&ready_queue);
+
+ /* Calculate the number of pages. */
+ memory_pages = memory_size/(4*1024);
+
+ if (memory_pages > MAX_NUMBER_OF_FRAMES)
+  memory_pages = MAX_NUMBER_OF_FRAMES;
+
+ {
+  /* Calculate the number of frames occupied by the kernel and executable 
+     images. */
+  const register int k=first_available_memory_byte/(4*1024);
+
+  /* Mark the pages that are used by the kernel or executable images as taken
+    by the kernel (-2 in the owner field). */
+  for(i=0; i<k; i++)
+  {
+   page_frame_table[i].owner=-2;
+   page_frame_table[i].free_is_allowed=0;
+  }
+
+  /* Loop over all the rest page frames and mark them as free (-1 in owner
+     field). */
+  for(i=k; i<memory_pages; i++)
+  {
+   page_frame_table[i].owner=-1;
+   page_frame_table[i].free_is_allowed=1;
+  }
+
+  /* Mark any unusable pages as taken by the kernel. */
+  for(i=memory_pages; i<MAX_NUMBER_OF_FRAMES; i++)
+  {
+   page_frame_table[i].owner=-2;
+   page_frame_table[i].free_is_allowed=0;
+  }
+ }
 
  /* Go through the linked list of executable images and verify that they
     are correct. At the same time build the executable_table. */
@@ -364,6 +464,37 @@ initialize(void)
   }
  }
 
+ initialize_memory_protection();
+
+ /* All sub-systems are now initialized. Kernel areas can now get the right
+    memory protection. */
+
+ {
+  /* Use the kernel's ELF header. */
+  extern struct Elf64_Ehdr kernel64_start[1];
+
+  struct Elf64_Phdr* program_header = ((struct Elf64_Phdr*)
+                                       (((char*) (kernel64_start)) +
+                                        kernel64_start->e_phoff));
+
+  /* Traverse the program header. */
+  short              number_of_program_header_entries = 
+                      kernel64_start->e_phnum;
+  int                i;
+  for(i=0; i<number_of_program_header_entries; i++)
+  {
+   if (PT_LOAD == program_header[i].p_type)
+   {
+    /* Set protection on each segment. */
+
+    update_memory_protection(kernel_page_table_root,
+                             program_header[i].p_vaddr,
+                             program_header[i].p_memsz,
+                             (program_header[i].p_flags&7) | PF_KERNEL);
+   }
+  }
+ }
+
  /* Start running the first program in the executable table. */
 
  /* Use the ELF program header table and copy the right portions of the
@@ -387,6 +518,12 @@ initialize(void)
   process_table[0].parent=-1;    /* We put -1 to indicate that there is no
                                     parent process. */
   process_table[0].threads=1;
+
+  /* Set the page table address. */
+  process_table[0].page_table_root =
+   prepare_process_ret_val.page_table_address;
+  cpu_private_data.page_table_root =
+   prepare_process_ret_val.page_table_address;
 
   /* We need a thread. We just take the first one as no threads are running or
      have been allocated at this point. */
@@ -552,6 +689,30 @@ system_call_handler(void)
   {
    /* Returns the current system time to the program. */
    SYSCALL_ARGUMENTS.rax=system_time;
+   break;
+  }
+
+  case SYSCALL_FREE:
+  {
+   SYSCALL_ARGUMENTS.rax=kfree(SYSCALL_ARGUMENTS.rdi);
+   break;
+  }
+
+  case SYSCALL_ALLOCATE:
+  {
+   /* Check the flags. */
+   if (0!=SYSCALL_ARGUMENTS.rsi & ~(ALLOCATE_FLAG_READONLY|ALLOCATE_FLAG_EX))
+   {
+    /* Return if the flags were not properly set. */
+    SYSCALL_ARGUMENTS.rax = ERROR;
+    break;
+   }
+
+
+   SYSCALL_ARGUMENTS.rax=kalloc(
+           SYSCALL_ARGUMENTS.rdi,
+           thread_table[cpu_private_data.thread_index].data.owner,
+           SYSCALL_ARGUMENTS.rsi & (ALLOCATE_FLAG_READONLY|ALLOCATE_FLAG_EX));
    break;
   }
 

@@ -1,26 +1,12 @@
-/*! \file main.c
- *      \brief The second user program - never ending loop that busy waits
- *             100 clock ticks in a CPU time consuming way. It does
- *             use system calls which allows the system to switch to other
- *             processes.
+/*! \file
+ *      \brief The second user program - empty program
  *
  */
 
 #include <scwrapper.h>
 
-void 
+int
 main(int argc, char* argv[])
 {
-  int last;
- while(1)
- {
-  long curr_time=time();
-
-  while((time()-curr_time) < 100);
-
-
-  printhex(time()-last);
-  prints("  Pong ++\n");
-  last = time();
- }
+ return 0;
 }

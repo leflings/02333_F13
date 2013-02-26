@@ -9,6 +9,7 @@
 .global TSS
 .global stack
 .global interrupt_entries
+
 syscall_dummy_target:
  # We should never reach this!
  hlt
@@ -28,7 +29,7 @@ syscall_target:
  mov    %eax,%es
  mov    %eax,%fs
 
- # Get the index to the thread that should be run
+ # Get the index to the thread that has run
  mov    %gs:16,%eax
  # mask off everything except the lowest 8 bits
  and    $255,%rax
@@ -76,11 +77,16 @@ return_to_user_mode:
 
  # Get the index to the thread that should be run
  mov    %gs:16,%eax
+
  # Check if the index is negative. In that case we should do a context switch
  # to the idle thread.
  test   %eax,%eax
  jns    no_idle
 
+ # Set the default kernel page table root pointer.
+ mov    kernel_page_table_root,%rbx
+ mov    %rbx,%cr3
+	
  # The idle thread:
  swapgs
  sti    # Enable interrupts
@@ -93,6 +99,10 @@ return_to_user_mode:
  jmp    return_to_user_mode
 
 no_idle:
+ # Set a new page table root pointer.
+ mov    %gs:8,%rbx
+ mov    %rbx,%cr3
+
  # mask off everything except the lowest 8 bits
  and    $255,%rax
  # The size of a thread structure is 1024 bytes. We multiply the index with
@@ -106,7 +116,7 @@ no_idle:
  # Restore the FPU state
  fxrstor -512(%rax)
 
- # Restore registers
+ # Restore most registers
  mov    1*8(%rax),%rbx
  mov    3*8(%rax),%rdx
  mov    4*8(%rax),%rdi

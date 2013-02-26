@@ -94,6 +94,7 @@ struct process
                                       process. */
  int             parent;         /*!< This is an index into process_table. The
                                       index corresponds to the parent process. */
+ unsigned long   page_table_root; /*!< Address of the page table tree. */
 };
 
 /* ELF image structures. The names from the ELF64 specification are used and
@@ -245,15 +246,6 @@ extern const char*
 ELF_images_end;
 /*!< The address of the first byte after the end of the last ELF image. This
      variable is used for sanity checking. */
-
-extern unsigned long
-first_available_memory_byte;
-/*!< The address of the first memory byte not used by any running process.
-     This variable is used to implement a crude memory allocation scheme. */
-
-extern unsigned long
-memory_size;
-/*!< Size, in bytes, of the memory. */
 
 /*! \note Linked lists are terminated with a thread with a next index of -1. */
 
