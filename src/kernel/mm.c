@@ -65,11 +65,13 @@ kfree(const register unsigned long address)
     kprints(" - which is page_frame: ");
     kprinthex(pf);
     kprints("\n");
-  if(page_frame_table[pf].free_is_allowed && page_frame_table[pf].owner != -1
-      /* free is allowed and block is not allocated */
+  if( /* free is allowed */
+      page_frame_table[pf].free_is_allowed
+      /* block is allocated  */
+      && page_frame_table[pf].owner != -1
+      /* block is owned by current process*/
       && page_frame_table[pf].owner
-        == thread_table[cpu_private_data.thread_index].data.owner
-        /* block is owned by current process*/) {
+        == thread_table[cpu_private_data.thread_index].data.owner) {
     for(i = pf; i < MAX_NUMBER_OF_FRAMES && page_frame_table[i].start == pf; i++) {
       page_frame_table[i].owner = -1;
       page_frame_table[i].free_is_allowed = 1;
@@ -109,6 +111,7 @@ int find_contigous_region(short pages_needed) {
 
         return i;
       }
+      /* No need to have outer loop check those pages */
       i += k;
     }
   }
