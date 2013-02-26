@@ -11,6 +11,7 @@
 void 
 main(int argc, char* argv[])
 {
+  int last;
  if (0 != createprocess(1))
  {
   prints("createprocess of program 1 failed.\n");
@@ -26,6 +27,8 @@ main(int argc, char* argv[])
  while(1)
  {
   pause(100);
-  prints("Ping\n");
+  printhex(time()-last);
+  prints("  Ping --\n");
+  last = time();
  }
 }

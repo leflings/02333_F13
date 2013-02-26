@@ -10,11 +10,12 @@
 void 
 main(int argc, char* argv[])
 {
+  int last;
  while(1)
  {
   /* When testing the preemptive scheduler, replace 0 in the c pre-processor
      if below with a 1.  */
-#if 0
+#if 1
   volatile long curr_time=0;
 
   while(curr_time++ < 1000000);
@@ -22,6 +23,8 @@ main(int argc, char* argv[])
   pause(100);
 #endif
 
-  prints("Pang\n");
+  printhex(time()-last);
+  prints("  Pang ##\n");
+  last = time();
  }
 }

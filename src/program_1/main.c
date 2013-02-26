@@ -11,12 +11,16 @@
 void 
 main(int argc, char* argv[])
 {
+  int last;
  while(1)
  {
   long curr_time=time();
 
   while((time()-curr_time) < 100);
 
-  prints("Pong\n");
+
+  printhex(time()-last);
+  prints("  Pong ++\n");
+  last = time();
  }
 }
