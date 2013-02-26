@@ -35,12 +35,6 @@ system_call_implementation(void)
    break;
   }
 
-  case SYSCALL_VERSION:
-  {
-    SYSCALL_ARGUMENTS.rax = KERNEL_VERSION;
-    break;
-  }
-
   /* Do not touch any lines above or including this line. */
 
   /* Add the implementation of more system calls here. */

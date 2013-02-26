@@ -1,9 +1,11 @@
-# This file holds all long mode assembly code.
+# This file holds long mode assembly code.
 # WARNING: This code, like most assembly code, is far from easy to understand.
 #  Take help from a teaching assistant!
 
  .text
  .global _start
+ .global executable_table_size
+ .global executable_table
 # This is the 64-bit kernel entry point
 _start:
  # We can now set the kernel stack
@@ -12,7 +14,18 @@ _start:
  # Set all flags to a well defined state
  push   $0
  popf
- 
+
+ # Clear the bss segment
+ mov    $start_of_bss,%rbp
+ mov    $end_of_bss,%rax
+ sub    %rbp,%rax
+ xor    %rcx,%rcx
+bss_clear_loop:
+ mov    %rcx,(%rbp)
+ add    $8,%rbp
+ sub    $8,%rax
+ jnz    bss_clear_loop
+		
  # Set the FS base to 0
  mov    $0xc0000100,%ecx
  xor    %eax,%eax
@@ -70,24 +83,29 @@ _start:
  xor    %edx,%edx
  mov    $0x00000300,%eax
  wrmsr
- 
+
+ # Set the ELF_images_start variable to the start of the linked list of
+ # executable images
+ movq   $start_of_ELF_images,ELF_images_start
+
+ # Set the ELF_images_end variable to the end of the linked list of
+ # executable images
+ movq   $end_of_ELF_images,ELF_images_end
+
+ # Set the first_available_memory_byte variable to the address of the first
+ # available memory byte. The address is rounded of to the nearest higher
+ # address which is evenly dividable with 4096.
+ mov    $end_of_bss,%rax
+ add    $4096-1,%rax
+ and    $-4096,%rax
+ mov    %rax,first_available_memory_byte
+
+ # Set the highest available memory address. For now this is just a hack.
+ # The memory management code will be improved in later tasks.
+ mov	$(32768-1024-64)*1024,%rax
+ mov    %rax,memory_size
+
  # We can now switch to c!
  call   initialize
 
- # Back in assembly land after calling the c function initialize.
- # We should now jump into user space. Set up registers the way we want and go!
-
- # Set user level start
- mov    $user_level_start,%rcx
-
- # Reset all flags. This will mean that we will run with interrupts disabled
- xor    %r11,%r11
-
- # Set segments to user mode
- mov    $11,%eax
- mov    %eax,%ds
- mov    %eax,%es
- mov    %eax,%fs
- mov    %eax,%gs
- sysretq
- 
+ jmp    return_to_user_mode

@@ -26,6 +26,14 @@ SECTIONS
   .rodata (ADDR(.text) + SIZEOF (.text)) :
    AT (LOADADDR(.text) + SIZEOF (.text))
   {
+   start_of_ELF_images = ABSOLUTE(.);
+   QUAD(_binary_objects_program_1_executable_stripped_start - 8); */
+   objects/program_0/executable.o (.data)
+   QUAD(_binary_objects_program_2_executable_stripped_start - 8); */
+   objects/program_1/executable.o (.data)
+   QUAD(0);
+   objects/program_2/executable.o (.data)
+   end_of_ELF_images = ABSOLUTE(.);
    * (.ro*)  /* Any remaining read only data sections. */
    * (.eh*)  /* Any remaining eh_frame sections. */
    . = ALIGN(4096);
@@ -35,14 +43,18 @@ SECTIONS
    AT (LOADADDR(.rodata) + SIZEOF (.rodata))
   {
    * (.data) /* Any remaining data sections. */
-   . = ALIGN(4096);
   } : data
   
+  start_of_bss = ABSOLUTE(.);
+
   .bss (ADDR(.data) + SIZEOF (.data)) :
    AT (LOADADDR(.data) + SIZEOF (.data))
   {
    * (.bss)  /* Any remaining bss sections. */
+   . = ALIGN(8);
   }
+
+  end_of_bss = ABSOLUTE(.); 
 
   /* Various debug sections. */
   .stab 0 : 
