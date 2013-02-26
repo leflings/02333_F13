@@ -11,7 +11,7 @@ system_call_implementation(void)
 {
  register int schedule=0;
  /*!< System calls may set this variable to 1. The variable is used as
-      input to the scheduler to indicate if scheduling is necessary. */
+  *       input to the scheduler to indicate if scheduling is necessary. */
  switch(SYSCALL_ARGUMENTS.rax)
  {
   case SYSCALL_PRINTS:
@@ -37,6 +37,74 @@ system_call_implementation(void)
    SYSCALL_ARGUMENTS.rax = ALL_OK;
    break;
   }
+  
+  case SYSCALL_VERSION:
+  {
+    SYSCALL_ARGUMENTS.rax = KERNEL_VERSION;
+    break;
+  }
+
+  case SYSCALL_CREATEPROCESS:
+  {
+    int process_number, thread_number;
+    long int executable_number = SYSCALL_ARGUMENTS.rdi;
+    struct prepare_process_return_value prepare_process_ret_val;
+
+    for(process_number = 0; process_number < MAX_NUMBER_OF_PROCESSES
+        && process_table[process_number].threads > 0; process_number++)
+    {
+    }
+
+    prepare_process_ret_val = prepare_process(
+        executable_table[executable_number].elf_image,
+        process_number,
+        executable_table[executable_number].memory_footprint_size);
+
+    if(0 == prepare_process_ret_val.first_instruction_address)
+    {
+      kprints("Error starting image\n");
+    }
+
+    process_table[process_number].parent
+      = thread_table[cpu_private_data.thread_index].data.owner;
+
+    thread_number = allocate_thread();
+
+    thread_table[thread_number].data.owner = process_number;
+    thread_table[thread_number].data.registers.integer_registers.rflags = 0x200;
+    thread_table[thread_number].data.registers.integer_registers.rip = 
+      prepare_process_ret_val.first_instruction_address;
+
+    process_table[process_number].threads += 1;
+
+    SYSCALL_ARGUMENTS.rax = ALL_OK;
+
+    thread_queue_enqueue(&ready_queue, thread_number);
+    break;
+  }
+
+  case SYSCALL_TERMINATE:
+  {
+    int i;
+    int owner_process = thread_table[cpu_private_data.thread_index].data.owner;
+    int parent_process = process_table[owner_process].parent;
+
+    /* Terminate thread */
+    thread_table[cpu_private_data.thread_index].data.owner = -1;
+
+    /*Decrement thread count */
+    process_table[owner_process].threads -= 1;
+
+    if(process_table[owner_process].threads < 1)
+    {
+      cleanup_process(owner_process);
+    }
+
+    schedule = 1;
+
+    break;
+  }
+
 
   /* Do not touch any lines above or including this line. */
 
