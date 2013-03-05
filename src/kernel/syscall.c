@@ -51,6 +51,12 @@ system_call_implementation(void)
     int priority = SYSCALL_ARGUMENTS.rdi % 64;
     struct prepare_process_return_value prepare_process_ret_val;
 
+    if(priority >= MAX_PRIORITY) {
+      kprints("Priority too high\n");
+      SYSCALL_ARGUMENTS.rax =  ERROR;
+      return;
+    }
+
     for(process_number = 0; process_number < MAX_NUMBER_OF_PROCESSES
         && process_table[process_number].threads > 0; process_number++)
     {
