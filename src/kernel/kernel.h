@@ -7,6 +7,7 @@
 #define _KERNEL_H_
 
 #include <sysdefines.h>
+#include "threadqueue.h"
 
 /* Type definitions */
 
@@ -24,6 +25,8 @@
 /*!< Size of the process_table. */
 #define MAX_NUMBER_OF_THREADS   (256)
 /*!< Size of the thread_table. */
+#define MAX_PRIORITY (16)
+/*!< Highest available priority */
 
 /* Type declarations */
 
@@ -94,6 +97,7 @@ struct process
                                       process. */
  int             parent;         /*!< This is an index into process_table. The
                                       index corresponds to the parent process. */
+ int             priority;       /*!< A process priority */
 };
 
 /* ELF image structures. The names from the ELF64 specification are used and
@@ -258,7 +262,7 @@ memory_size;
 /*! \note Linked lists are terminated with a thread with a next index of -1. */
 
 extern struct thread_queue
-ready_queue;
+ready_queue[MAX_PRIORITY];
 /*!< The ready queue. */
 
 extern int

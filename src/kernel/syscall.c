@@ -47,7 +47,8 @@ system_call_implementation(void)
   case SYSCALL_CREATEPROCESS:
   {
     int process_number, thread_number;
-    long int executable_number = SYSCALL_ARGUMENTS.rdi;
+    long int executable_number = SYSCALL_ARGUMENTS.rdi >> 6;
+    int priority = SYSCALL_ARGUMENTS.rdi % 64;
     struct prepare_process_return_value prepare_process_ret_val;
 
     for(process_number = 0; process_number < MAX_NUMBER_OF_PROCESSES
@@ -76,10 +77,11 @@ system_call_implementation(void)
       prepare_process_ret_val.first_instruction_address;
 
     process_table[process_number].threads += 1;
+    process_table[process_number].priority = priority;
 
     SYSCALL_ARGUMENTS.rax = ALL_OK;
 
-    thread_queue_enqueue(&ready_queue, thread_number);
+    thread_queue_enqueue(&ready_queue[priority], thread_number);
     break;
   }
 

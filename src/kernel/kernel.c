@@ -19,7 +19,7 @@ struct process
 process_table[MAX_NUMBER_OF_PROCESSES];
 
 struct thread_queue
-ready_queue;
+ready_queue[MAX_PRIORITY];
 
 struct executable
 executable_table[MAX_NUMBER_OF_PROCESSES];
@@ -199,7 +199,11 @@ initialize(void)
  }
 
  /* Initialize the ready queue. */
- thread_queue_init(&ready_queue);
+ for(i=0; i<MAX_PRIORITY; i++)
+ {
+   thread_queue_init(&ready_queue[i]);
+
+ }
 
  /* Go through the linked list of executable images and verify that they
     are correct. At the same time build the executable_table. */
@@ -398,6 +402,9 @@ initialize(void)
   /* And set the start address. */
   thread_table[0].data.registers.integer_registers.rip =
    prepare_process_ret_val.first_instruction_address;
+
+  /* Set its' priority */
+  process_table[0].priority = 15;
 
   /* Finally we set the current thread. */
   cpu_private_data.thread_index = 0;
@@ -606,7 +613,9 @@ timer_interrupt_handler(void)
    else
    {
     /* Or insert it into the ready queue. */
-    thread_queue_enqueue(&ready_queue, tmp_thread_index);
+    thread_queue_enqueue(&ready_queue[process_table[
+                                     thread_table[tmp_thread_index].data.owner
+                                     ].priority], tmp_thread_index);
    }
   }
  }

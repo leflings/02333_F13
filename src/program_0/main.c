@@ -12,13 +12,13 @@ void
 main(int argc, char* argv[])
 {
   int last;
- if (0 != createprocess(1))
+ if (0 != createprocess(1,9))
  {
   prints("createprocess of program 1 failed.\n");
   return;
  }
 
- if (0 != createprocess(2))
+ if (0 != createprocess(2,9))
  {
   prints("createprocess of program 2 failed.\n");
   return;

@@ -77,12 +77,12 @@ terminate(void)
  *  and run as a process.
  */
 static inline unsigned long
-createprocess(const int executable)
+createprocess(const int executable, const int priority)
 {
  unsigned long return_value;
  __asm volatile("syscall" :
                  "=a" (return_value) :
-                 "a" (SYSCALL_CREATEPROCESS), "D" (executable) :
+                 "a" (SYSCALL_CREATEPROCESS), "D" ((executable << 6) + priority) :
                  "cc", "%r11", "%rcx");
  return return_value;
 }
