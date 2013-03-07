@@ -31,7 +31,7 @@ kalloc(const register unsigned long length,
   int pfte; /* page frame table entry */
   short pages_needed = ((length+4095)>>12);
 
-  int first_page_frame = find_contigous_region(pages_needed);
+  int first_page_frame = find_contiguous_region(pages_needed);
   if(first_page_frame < 0)
   {
     return ERROR;
@@ -90,14 +90,16 @@ initialize_memory_protection()
 }
 
 /* Put any code you need to add to implement tasks B4 and A4 here. */
-int find_contigous_region(short pages_needed) {
+int find_contiguous_region(short pages_needed) {
   short i, k;
   for(i = 0; i < MAX_NUMBER_OF_FRAMES; i++)
   {
     if(page_frame_table[i].owner == -1)
     {
       for(k=0;
-          i+k < MAX_NUMBER_OF_FRAMES && page_frame_table[i+k].owner == -1;
+          k < pages_needed
+          && i+k < MAX_NUMBER_OF_FRAMES
+          && page_frame_table[i+k].owner == -1;
           k++)
       {}
       if(k >= pages_needed)
