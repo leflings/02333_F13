@@ -50,9 +50,22 @@ system_call_implementation(void)
     long int executable_number = SYSCALL_ARGUMENTS.rdi;
     struct prepare_process_return_value prepare_process_ret_val;
 
-    for(process_number = 0; process_number < MAX_NUMBER_OF_PROCESSES
-        && process_table[process_number].threads > 0; process_number++)
+    /* Search process_table for a slot */
+    for(process_number = 0;; process_number++)
     {
+      if(process_number < MAX_NUMBER_OF_PROCESSES
+          && process_table[process_number].threads > 0)
+      {
+        continue;
+      }
+      break;
+    }
+
+    if(process_number == MAX_NUMBER_OF_PROCESSES)
+    {
+      SYSCALL_ARGUMENTS.rax = ERROR;
+      kprints("Max number of processes reached\n");
+      break;
     }
 
     prepare_process_ret_val = prepare_process(
@@ -67,6 +80,13 @@ system_call_implementation(void)
 
     process_table[process_number].parent
       = thread_table[cpu_private_data.thread_index].data.owner;
+
+    /* Allocate default port 0 */
+    if(-1 == allocate_port(0,process_number)) {
+      SYSCALL_ARGUMENTS.rax = ERROR;
+      kprints("Ran out of ports or port is already allocated\n");
+      break;
+    }
 
     thread_number = allocate_thread();
 
