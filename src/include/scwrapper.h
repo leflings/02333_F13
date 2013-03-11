@@ -147,4 +147,126 @@ free(unsigned long address)
  return return_value;
 }
 
+
+/*! Wrapper for the system call that allocates a port. */
+static inline long
+allocateport(unsigned long id)
+{
+ long return_value;
+ __asm volatile("syscall" :
+                 "=a" (return_value) :
+                 "a" (SYSCALL_ALLOCATEPORT), "D" (id) :
+                 "cc", "%r11", "%rcx");
+ return return_value;
+}
+
+/*! Wrapper for the system call that finds a port given an owning process and
+    port identity. */
+static inline long
+findport(unsigned long id, unsigned long process)
+{
+ long return_value;
+ __asm volatile("syscall" :
+                 "=a" (return_value) :
+                 "a" (SYSCALL_FINDPORT), "D" (id), "S" (process):
+                 "cc", "%r11", "%rcx");
+ return return_value;
+}
+
+/*! Wrapper for the system call that sends a message to a port. */
+static inline long
+send(unsigned long port, const struct message* const message)
+{
+ long return_value;
+ __asm volatile("syscall" :
+                 "=a" (return_value) :
+                 "a" (SYSCALL_SEND), "D" (port), "S" (SYSCALL_MSG_SHORT),
+                 "b" (message):
+                 "cc", "%r11", "%rcx", "memory");
+ return return_value;
+}
+
+/*! Wrapper for the system call that sends a notification to a port. */
+static inline long
+send_notification(unsigned long port)
+{
+ long return_value;
+ __asm volatile("syscall" :
+                 "=a" (return_value) :
+                 "a" (SYSCALL_SEND), "D" (port),
+                 "S" (SYSCALL_MSG_NOTIFICATION):
+                 "cc", "%r11", "%rcx", "memory");
+ return return_value;
+}
+
+/*! Wrapper for the system call that sends a message of arbitrary length to 
+    a port. */
+static inline long
+send_long(unsigned long               port, 
+          const struct message* const message,
+          const void* const           buffer, 
+          const unsigned long         buffer_length)
+{
+ long return_value;
+ __asm volatile("movq %%rcx,%%r10;\
+                 syscall;\
+                 movq %%r10,%%rcx" :
+                 "=a" (return_value) :
+                 "a" (SYSCALL_SEND), "D" (port), "S" (SYSCALL_MSG_LONG),
+                 "d" (buffer), "c" (buffer_length), "b" (message):
+                 "cc", "%r11", "%r10", "memory");
+ return return_value;
+}
+
+/*! Wrapper for the system call that receives a message from a port. */
+static inline long
+receive(unsigned long         port, 
+        struct message* const message,
+        unsigned long* const  sender, 
+        unsigned long* const  message_type)
+{
+ long return_value;
+ __asm volatile("syscall" :
+                 "=a" (return_value), "=D" (*sender), "=S" (*message_type) :
+                 "a" (SYSCALL_RECEIVE), "D" (port), "S" (SYSCALL_MSG_SHORT),
+                 "b" (message):
+                 "cc", "%r11", "%rcx", "memory");
+ return return_value;
+}
+
+/*! Wrapper for the system call that receives a message of arbitrary size 
+    from a port. */
+static inline long
+receive_long (unsigned long         port, 
+              void* const           buffer,
+              unsigned long*        buffer_length, 
+              struct message* const message,
+              unsigned long* const  sender, 
+              unsigned long* const  message_type)
+{
+ long return_value;
+ __asm volatile("movq %%rcx,%%r10;\
+                 syscall;\
+                 movq %%r10,%%rcx" :
+                 "=a" (return_value), "=D" (*sender),
+                 "=S" (*message_type), "=c" (*buffer_length) :
+                 "a" (SYSCALL_RECEIVE), "D" (port), "S" (SYSCALL_MSG_LONG),
+                 "b" (message), "d" (buffer), "c" (*buffer_length):
+                 "cc", "%r11", "%r10", "memory");
+ return return_value;
+}
+
+/*! Wrapper for the system call that returns the process identity of the
+    calling thread. */
+static inline long
+getpid(void)
+{
+ long return_value;
+ __asm volatile("syscall" :
+                 "=a" (return_value) :
+                 "a" (SYSCALL_GETPID) :
+                 "cc", "%rcx", "%r11");
+ return return_value;
+}
+
 #endif

@@ -1,12 +1,14 @@
 /*! \file
- *      \brief The third user program - empty program
+ *      \brief The third user program - 
+ *             You can add your own code here if you wish.
+ *             
  *
  */
 
 #include <scwrapper.h>
 
-int
+void
 main(int argc, char* argv[])
 {
- return 0;
+	return 1;
 }

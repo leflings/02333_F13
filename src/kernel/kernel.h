@@ -131,7 +131,7 @@ struct Elf64_Ehdr
  long          e_phoff;            /*!< The offset into the image where the
                                         program header table is found. */
  long          e_shoff;            /*!< The offset into the image where the
-                                        program header table is found. */
+                                        section header table is found. */
  int           e_flags;            /*!< Flags that are machine specific.
                                         These can be used to differentiate
                                         between similar machines. */

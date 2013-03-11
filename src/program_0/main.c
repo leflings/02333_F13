@@ -1,94 +1,92 @@
 /*! \file
- *      \brief The first user program - tests the memory allocation routines
- *             by allocating and de-allocating random memory blocks.
+ *      \brief The first user program - 
+ *             in a neverending loop, waits for messages from the other 
+ *             processes and responds to them.
  *
  */
+
 #include <scwrapper.h>
 
-/* Generates a pseduo random number */
-static inline unsigned long
-rnd(void)
-{
- const unsigned long  seed=101;
- static unsigned long memory;
-
- if ((memory==0) || 
-     (memory==1) || 
-     (memory==-1)) 
- {
-  memory=seed;
- }
-
- memory=(9973*(~memory))+((memory)%701);
- return memory;
-}
-
-int
+void
 main(int argc, char* argv[])
 {
- struct
+ long recv_port;
+ 
+ /* Launch two instances of program_1 */
+ if (ALL_OK != createprocess(1))
  {
-  unsigned long addr;
-  unsigned long size;
- }              blocks[16];
- register int   clock;
- register long  total_memory_size=0;
-
- /* Reset the information on the blocks */
- for(clock=0; clock<16; clock++)
- {
-  blocks[clock].addr=0;
+  prints("process 0: createprocess(1) failed\n");
+  debugger();
  }
 
- clock=0;
+ if (ALL_OK != createprocess(1))
+ {
+  prints("process 0: Second instance of createprocess(1) failed\n");
+  debugger();
+ }
 
+ /* Get the port index for our own port 0 */
+ recv_port=findport(0,0);
+ if (recv_port < 0)
+ {
+  prints("process 0: findport for process 0 failed\n");
+  debugger();
+ }
+
+
+ /* Go into an infinite loop, waiting for messages and sending replies. */
+
+ prints("process 0: main loop\n");
  while(1)
  {
-  long          addr;
-  unsigned int  flags=rnd()&3;
+  struct message msg;
+  unsigned long  sender, type;
+  long send_port;
 
-  /* randomize the size of a block. */
-  blocks[clock].size=(24*1024*1024-total_memory_size)*(rnd()&(256*256-1))/
-                     (256*256*8);
-
-  /* Sanity check the block size. */
-  if ((blocks[clock].size>0) && 
-      (blocks[clock].size<(24*1024*1024)))
+  if ((ALL_OK != receive(recv_port, &msg, &sender, &type)) ||
+      (SYSCALL_MSG_SHORT != type))
   {
-   /* Try to allocate memory. */
-   addr=alloc(blocks[clock].size,flags);
-
-   /* Check if it was successful. */
-   if (addr<=0)
-   {
-    prints("Memory block allocate failed!\n");
-    break;
-   }
-
-   prints(".");
-
-   /* Keep track of how much memory we have allocated... */
-   total_memory_size+=blocks[clock].size;
-   /* and the address. */
-   blocks[clock].addr=addr;
+   prints("process 0: receive failed\n");
+   debugger();
   }
-  else
+  prints("process 0: received ping\n");
+
+  /* Test message. */
+  if ((0 != msg.quad_0) ||
+      (1 != msg.quad_1) ||
+      (2 != msg.quad_2) ||
+      (3 != msg.quad_3) ||
+      (4 != msg.quad_4) ||
+      (5 != msg.quad_5) ||
+      (6 != msg.quad_6) ||
+      (7 != msg.quad_7))
   {
-   blocks[clock].addr=0;
+   prints("process 0: message test failed\n");
+   debugger();
   }
 
-  clock=(clock+1)&15;
-
-  /* Try to free one block. */
-  if (0 != blocks[clock].addr)
+  send_port=findport(0, sender);
+  if (send_port < 0)
   {
-   if (0 != free(blocks[clock].addr))
-   {
-    prints("Memory block free failed!\n");
-    break;
-   }
-   prints("*");
-   total_memory_size-=blocks[clock].size;
+   prints("process 0: findport for process failed\n");
+   debugger();
   }
+
+
+  msg.quad_0=7;
+  msg.quad_1=6;
+  msg.quad_2=5;
+  msg.quad_3=4;
+  msg.quad_4=3;
+  msg.quad_5=2;
+  msg.quad_6=1;
+  msg.quad_7=0;
+
+  if (ALL_OK != send(send_port, &msg))
+  {
+   prints("process 0: send failed\n");
+   debugger();
+  }
+  prints("process 0: sent pong\n");
  }
 }

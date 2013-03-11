@@ -7,6 +7,7 @@
 #include "kernel.h"
 #include "threadqueue.h"
 #include "mm.h"
+#include "sync.h"
 
 /* Note: Look in kernel.h for documentation of global variables and
    functions. */
@@ -26,7 +27,7 @@ struct executable
 executable_table[MAX_NUMBER_OF_PROCESSES];
 
 int
-executable_table_size;
+executable_table_size = 0;
 
 /* The following two variables are set by the assembly code. */
 
@@ -116,7 +117,7 @@ prepare_process(const struct Elf64_Ehdr* elf_image,
   /* Clear the first frames. */
   for(i=0; i<3*4*1024/8; i++)
   {
-   *dst = 0;
+   *dst++ = 0;
   }
 
   /* Build the pml4 table. */
@@ -215,13 +216,6 @@ prepare_process(const struct Elf64_Ehdr* elf_image,
  /* Find out the address to the first instruction to be executed. */
  ret_val.first_instruction_address = address_to_memory_block +
                                      elf_image->e_entry;
-
- /* Claim the memory. */
- first_available_memory_byte += memory_footprint_size;
- /* And round to nearest higher multiple of 4096 */
- first_available_memory_byte += 4096-1;
- first_available_memory_byte &= -4096;
-
  return ret_val;
 }
 
@@ -465,6 +459,7 @@ initialize(void)
  }
 
  initialize_memory_protection();
+ initialize_ports();
 
  /* All sub-systems are now initialized. Kernel areas can now get the right
     memory protection. */
@@ -518,6 +513,15 @@ initialize(void)
   process_table[0].parent=-1;    /* We put -1 to indicate that there is no
                                     parent process. */
   process_table[0].threads=1;
+
+  /*  all processes should start with an allocated port with id zero */
+  if (-1 == allocate_port(0,0))
+  {
+   while(1)
+   {
+    kprints("Kernel panic! Can not initialize the IPC system!\n");
+   }
+  }
 
   /* Set the page table address. */
   process_table[0].page_table_root =
@@ -714,6 +718,55 @@ system_call_handler(void)
            thread_table[cpu_private_data.thread_index].data.owner,
            SYSCALL_ARGUMENTS.rsi & (ALLOCATE_FLAG_READONLY|ALLOCATE_FLAG_EX));
    break;
+  }
+
+  case SYSCALL_ALLOCATEPORT:
+  {
+   int port=allocate_port(SYSCALL_ARGUMENTS.rdi, 
+                          thread_table[cpu_private_data.thread_index].
+                           data.owner);
+
+   /* Return an error if a port cannot be allocated. */
+   if (port<0)
+   {
+    SYSCALL_ARGUMENTS.rax=ERROR;
+    break;
+   }
+
+   SYSCALL_ARGUMENTS.rax=port;
+   break;
+  }
+
+  case SYSCALL_FINDPORT:
+  {
+   int port;
+   unsigned long process=SYSCALL_ARGUMENTS.rsi;
+
+   /* Return an error if the process argument is wrong. */
+   if (process >= MAX_NUMBER_OF_PROCESSES)
+   {
+    SYSCALL_ARGUMENTS.rax=ERROR;
+    break;
+   }
+
+   port=find_port(SYSCALL_ARGUMENTS.rdi, 
+                  process);
+
+   if (port<0)
+   {
+    SYSCALL_ARGUMENTS.rax=ERROR;
+    break;
+   }
+
+   SYSCALL_ARGUMENTS.rax=port;
+   break;
+  }
+  
+  case SYSCALL_GETPID:
+  {
+   SYSCALL_ARGUMENTS.rax = 
+    thread_table[cpu_private_data.thread_index].data.owner;
+  break;
   }
 
   default:
