@@ -5,7 +5,7 @@
  */
 
 #include "kernel.h"
-#define MAX_TICKS 6
+#define MAX_TICKS 10
 
 void
 scheduler_called_from_system_call_handler(const register int schedule)
