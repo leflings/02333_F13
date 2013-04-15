@@ -1,130 +1,68 @@
-/*! \file
- *      \brief The first user program - 
- *             the test case follows the structure of the producer consumer 
- *             example in Tanenbaum&Woodhull's book.
- *
+/*! \file \brief The first user program - it tests the video routines
+ *      by writing to different places on the screen using different
+ *      colors.
  */
 
 #include <scwrapper.h>
 
-long buffer[16];
-int  head=0;
-int  tail=0;
-
-long empty_semaphore_handle;
-long mutex_semaphore_handle;
-long full_semaphore_handle;
-
-void thread(void)
+int main()
 {
- /* This is the consumer. */
+ /* Clear screen escape sequence */
+ const char *cls = "\033[2J";
 
- while(1)
+ /* Set color to red */
+ const char *red = "\033[31m";
+
+ /* Set color to green */
+ const char *green = "\033[32m";
+
+ /* Set color to blue */
+ const char *blue = "\033[34m";
+
+ /* Reset color */
+ const char *reset = "\033[0m";
+
+ /* Move cursor, the underscores are replaced in the loop */
+ char g[] = "\033[_;_H";
+
+ int n;
+
+ prints(cls);
+
+ for (n=0; n < 9; n++)
  {
-  long value;
+  /* Goto row, column. Note that the offsets are 1-based and we
+   * modify the string in situ! */
+  g[2] = '0' + n + 1;
+  g[4] = '0' + (n % 3) + 1;
 
-  if (ALL_OK != semaphoredown(full_semaphore_handle))
-  {
-   prints("semaphoredown failed!\n");
-   break;
-  }
+  prints(g);
 
-  if (ALL_OK != semaphoredown(mutex_semaphore_handle))
-  {
-   prints("semaphoredown failed!\n");
-   break;
-  }
+  /* Print out some colorful text! */
+  prints(red);
+  prints("Red ");
 
-  value=buffer[tail];
-  tail=(tail+1)&15;
+  prints(green);
+  prints("Green ");
 
-  if (ALL_OK != semaphoreup(mutex_semaphore_handle))
-  {
-   prints("semaphoreup failed!\n");
-   break;
-  }
-
-  if (ALL_OK != semaphoreup(empty_semaphore_handle))
-  {
-   prints("semaphoreup failed!\n");
-   break;
-  }
-
-  printhex(value);
-  prints("\n");
- }
- terminate();
-}
-
-void
-main(int argc, char* argv[])
-{
- register long  counter=0;
- register long  thread_stack;
-
- empty_semaphore_handle=createsemaphore(16);
- if (empty_semaphore_handle<0)
- {
-  prints("createsemaphore failed!\n");
-  return;
+  prints(blue);
+  prints("Blue\n");
  }
 
- full_semaphore_handle=createsemaphore(0);
- if (full_semaphore_handle<0)
- {
-  prints("createsemaphore failed!\n");
-  return;
- }
+ /* Reset the color to defaults and print again. */
+ prints(reset);
+ prints("Back to normal\n");
 
- mutex_semaphore_handle=createsemaphore(1);
- if (mutex_semaphore_handle<0)
+ /* We're done */
+ while (1)
  {
-  prints("createsemaphore failed!\n");
-  return;
- }
-
- thread_stack=alloc(4096, 0);
-
- if (0 >= thread_stack)
- {
-  prints("Could not allocate the thread's stack!\n");
-  return;
- }
-
- if (ALL_OK != createthread(thread, thread_stack+4096))
- {
-  prints("createthread failed!\n");
-  return;
- }
-
- /* This is the producer. */
- while(1)
- {
-  if (ALL_OK != semaphoredown(empty_semaphore_handle))
+  register long scan_code=getscancode();
+  if (0x1c==scan_code)
   {
-   prints("semaphoredown failed!\n");
-   break;
-  }
-
-  if (ALL_OK != semaphoredown(mutex_semaphore_handle))
+   prints("\033[20;0HEnter pressed ");
+  } else if (0x9c==scan_code)
   {
-   prints("semaphoredown failed!\n");
-   break;
-  }
-
-  buffer[head]=counter++;
-  head=(head+1)&15;
-
-  if (ALL_OK != semaphoreup(mutex_semaphore_handle))
-  {
-   prints("semaphoreup failed!\n");
-   break;
-  }
-
-  if (ALL_OK != semaphoreup(full_semaphore_handle))
-  {
-   prints("semaphoreup failed!\n");
-   break;
+   prints("\033[20;0HEnter released");
   }
  }
 }

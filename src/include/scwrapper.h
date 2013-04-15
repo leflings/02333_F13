@@ -398,4 +398,17 @@ conditionvariablesignal(long condition_variable_handle)
  return return_value;
 }
 
+
+/*! Wrapper for the system call that returns the next keyboard scan code. */
+static inline long
+getscancode(void)
+{
+ long return_value;
+ __asm volatile("syscall" : 
+                 "=a" (return_value) :
+                 "a" (SYSCALL_GETSCANCODE) : 
+                 "cc", "%rcx", "%r11");
+ return return_value;
+}
+
 #endif

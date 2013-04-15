@@ -27,8 +27,8 @@ objects/kernel/kernel64.o: objects/kernel/kernel64.stripped | objects/kernel
 objects/kernel/kernel64.stripped: objects/kernel/kernel64 | objects/kernel
 	x86_64-unknown-elf-strip -o objects/kernel/kernel64.stripped objects/kernel/kernel64
 
-objects/kernel/kernel64: objects/kernel/boot64.o objects/kernel/enter.o objects/kernel/kernel.o objects/kernel/mm.o objects/kernel/sync.o objects/kernel/threadqueue.o objects/kernel/scheduler.o objects/kernel/syscall.o objects/program_0/executable.o objects/program_1/executable.o objects/program_2/executable.o src/kernel/link64.ld | objects/kernel
-	x86_64-unknown-elf-ld  -z max-page-size=4096 -Tsrc/kernel/link64.ld -o objects/kernel/kernel64 objects/kernel/boot64.o objects/kernel/enter.o objects/kernel/kernel.o objects/kernel/mm.o objects/kernel/sync.o objects/kernel/threadqueue.o objects/kernel/scheduler.o objects/kernel/syscall.o objects/program_0/executable.o objects/program_1/executable.o objects/program_2/executable.o
+objects/kernel/kernel64: objects/kernel/boot64.o objects/kernel/enter.o objects/kernel/kernel.o objects/kernel/mm.o objects/kernel/sync.o objects/kernel/threadqueue.o objects/kernel/scheduler.o objects/kernel/syscall.o objects/kernel/video.o objects/program_0/executable.o objects/program_1/executable.o objects/program_2/executable.o src/kernel/link64.ld | objects/kernel
+	x86_64-unknown-elf-ld  -z max-page-size=4096 -Tsrc/kernel/link64.ld -o objects/kernel/kernel64 objects/kernel/boot64.o objects/kernel/enter.o objects/kernel/kernel.o objects/kernel/mm.o objects/kernel/sync.o objects/kernel/threadqueue.o objects/kernel/scheduler.o objects/kernel/syscall.o objects/kernel/video.o objects/program_0/executable.o objects/program_1/executable.o objects/program_2/executable.o
 
 objects/kernel/boot32.o: src/kernel/boot32.s | objects/kernel
 	x86_64-unknown-elf-as --32 -o objects/kernel/boot32.o src/kernel/boot32.s
@@ -59,6 +59,9 @@ objects/kernel/scheduler.o: src/kernel/scheduler.c src/kernel/kernel.h | objects
 
 objects/kernel/syscall.o: src/kernel/syscall.c src/kernel/kernel.h | objects/kernel
 	x86_64-unknown-elf-gcc -m64 $(CFLAGS) $(OPTIMIZATIONFLAGS) -c -o objects/kernel/syscall.o src/kernel/syscall.c
+
+objects/kernel/video.o: src/kernel/video.c src/kernel/kernel.h | objects/kernel
+	x86_64-unknown-elf-gcc -m64 $(CFLAGS) $(OPTIMIZATIONFLAGS) -c -o objects/kernel/video.o src/kernel/video.c
 
 objects/program_startup_code/startup.o: src/program_startup_code/startup.s | objects/program_startup_code
 	x86_64-unknown-elf-as --64 -o objects/program_startup_code/startup.o src/program_startup_code/startup.s

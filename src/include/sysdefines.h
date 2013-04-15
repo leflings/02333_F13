@@ -16,6 +16,10 @@
 #define ERROR_ILLEGAL_SYSCALL   (-2)
 /*! Return code when a message is too long. */
 #define ERROR_MESSAGE_TOO_LONG  (-3)
+/*! Max number of columns in VGA buffer. */
+#define MAX_COLS                (80)
+/*! Max number of columns in VGA buffer. */
+#define MAX_ROWS                (25)
 
 /*! System call that returns the version
  *  of the kernel. */
@@ -194,6 +198,14 @@
     unsuccessful.
    */
 #define SYSCALL_CONDITIONVARIABLESIGNAL (25)
+
+/*! Returns the next scan code from the keyboard in the rax register. The
+    system call blocks until data is available.
+
+    The system call returns a keyboard scan code in rax if successful or an 
+    error code if unsuccessful.
+ */
+#define SYSCALL_GETSCANCODE     (27)
 
 
 /* Type declarations. */

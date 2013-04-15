@@ -220,7 +220,26 @@ struct CPU_private
                                  /*!< Can be used by a preemptive scheduler. */
 };
 
+struct screen_position
+{
+ unsigned char character; /*!< The character part of the byte tuple used for
+                               each screen position. */
+ unsigned char attribute; /*!< The character part of the byte tuple used for
+                               each screen position. */
+};
+/*!< Defines a VGA text mode screen position. */
+
+struct screen
+{
+ struct screen_position positions[25][80];
+};
+/*!< Defines a VGA text mode screen. */
+
 /* Variable declarations */
+
+extern struct screen* const
+screen_pointer;
+/*!< Points to the VGA screen. */
 
 extern union thread
 thread_table[MAX_NUMBER_OF_THREADS];
@@ -324,9 +343,16 @@ system_call_handler(void);
 extern int
 system_call_implementation(void);
 
+/*! This function gets called from the interrupt handler and dispatches 
+    interrupts to interrupt handlers. */
+extern void
+interrupt_dispatcher(const unsigned long interrupt_number /*!< The number of 
+                                                               the interrupt */
+                    );
+
 /*! This function gets called from the interrupt handler and manages timer
     interrupts. */
-extern void
+static void
 timer_interrupt_handler(void);
 
 /*! Outputs a string to the bochs console. */
@@ -339,6 +365,11 @@ kprints(const char* const string
 extern void
 kprinthex(const register long value
           /*!< the value to be written */);
+
+
+/*! Clears the VGA buffer which is used in task 7. */
+extern void
+clear_screen(void);
 
 /*! One of two entry points to the scheduler. This function is called at the
     end of the system call handler. */
@@ -369,6 +400,24 @@ outw(const register unsigned short port_number,
      const register unsigned short output_value)
 {
  __asm volatile("outw %%ax,%%dx" : : "d" (port_number), "a" (output_value));
+}
+
+/*! Wrapper for a byte in instruction. */
+inline static char
+inb(const short port_number)
+{
+ char return_value;
+ __asm volatile("inb %%dx,%%al" : "=a" (return_value) : "d" (port_number));
+ return return_value;
+}
+
+/*! Wrapper for a word in instruction. */
+inline static short
+inw(const short port_number)
+{
+ short return_value;
+ __asm volatile("inw %%dx,%%ax" : "=a" (return_value) : "d" (port_number));
+ return return_value;
 }
 
 #endif
