@@ -104,4 +104,7 @@ initialize_memory_protection();
 
 /* Put any declarations you need to add to implement task A4 here. */
 
+int find_contiguous_region(short pages_needed);
+
+
 #endif
