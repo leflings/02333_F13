@@ -54,15 +54,16 @@ int main()
  prints("Back to normal\n");
 
  /* We're done */
+ prints("\033[19;1H");
  while (1)
  {
   register long scan_code=getscancode();
   if (0x1c==scan_code)
   {
-   prints("\033[20;0HEnter pressed ");
+   prints("Enter pressed\n ");
   } else if (0x9c==scan_code)
   {
-   prints("\033[20;0HEnter released");
+   prints("Enter released\n");
   }
  }
 }
