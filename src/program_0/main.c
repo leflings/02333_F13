@@ -18,20 +18,19 @@ long full_semaphore_handle;
 void thread(void)
 {
  /* This is the consumer. */
-
  while(1)
  {
+
   long value;
 
   if (ALL_OK != semaphoredown(full_semaphore_handle))
   {
-   prints("semaphoredown failed!\n");
+   prints("3semaphoredown failed!\n");
    break;
   }
-
   if (ALL_OK != semaphoredown(mutex_semaphore_handle))
   {
-   prints("semaphoredown failed!\n");
+   prints("4semaphoredown failed!\n");
    break;
   }
 
@@ -96,19 +95,20 @@ main(int argc, char* argv[])
   prints("createthread failed!\n");
   return;
  }
-
  /* This is the producer. */
  while(1)
  {
+
+
   if (ALL_OK != semaphoredown(empty_semaphore_handle))
   {
-   prints("semaphoredown failed!\n");
+   prints("1semaphoredown failed!\n");
    break;
   }
 
   if (ALL_OK != semaphoredown(mutex_semaphore_handle))
   {
-   prints("semaphoredown failed!\n");
+   prints("2semaphoredown failed!\n");
    break;
   }
 
@@ -126,5 +126,6 @@ main(int argc, char* argv[])
    prints("semaphoreup failed!\n");
    break;
   }
+
  }
 }

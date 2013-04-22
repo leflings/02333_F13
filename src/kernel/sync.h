@@ -54,5 +54,15 @@ initialize_thread_synchronization(void);
 /* Put any declarations you need to add to implement tasks B5, A5, B6 or A6 
    here. */
 
+#define MAX_NUMBER_OF_SEMAPHORES     (250)
+struct semaphore
+{
+	int owner;
+	int count;
+	struct thread_queue* blocked;
+
+};
+extern struct semaphore
+semaphore_table[MAX_NUMBER_OF_SEMAPHORES];
 
 #endif

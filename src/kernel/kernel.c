@@ -461,6 +461,7 @@ initialize(void)
  initialize_memory_protection();
  initialize_ports();
  initialize_thread_synchronization();
+ initialize_semaphores();
 
  /* All sub-systems are now initialized. Kernel areas can now get the right
     memory protection. */
