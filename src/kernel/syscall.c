@@ -352,6 +352,16 @@ system_call_implementation(void)
           int current_thread_owner = thread_table[current_thread].data.owner;
           struct mutex* m = &mutex_table[SYSCALL_ARGUMENTS.rdi];
 
+          /*
+          kprints("LOCK Mutex[");
+          kprinthex(SYSCALL_ARGUMENTS.rdi);
+          kprints("] owner[");
+          kprinthex(m->owner);
+          kprints("] taken[");
+          kprinthex(m->taken);
+          kprints("]\n");
+          */
+
           if(m->owner != current_thread_owner) {
             kprints("ERROR! Mutex not owned by calling process\n");
             SYSCALL_ARGUMENTS.rax = ERROR;
@@ -375,19 +385,34 @@ system_call_implementation(void)
           int current_thread_owner = thread_table[current_thread].data.owner;
           struct mutex* m = &mutex_table[SYSCALL_ARGUMENTS.rdi];
 
+          /*
+          kprints("UNLOCK Mutex[");
+          kprinthex(SYSCALL_ARGUMENTS.rdi);
+          kprints("] owner[");
+          kprinthex(m->owner);
+          kprints("] taken[");
+          kprinthex(m->taken);
+          kprints("]\n");
+          */
+
           if(m->owner != current_thread_owner) {
             kprints("ERROR! Mutex not owned by calling process\n");
             SYSCALL_ARGUMENTS.rax = ERROR;
+            break;
           }
-          else
-          {
-            if(thread_queue_is_empty(&m->blocked)) {
-              m->taken = 0;
-            } else {
-              thread_queue_enqueue(&ready_queue, thread_queue_dequeue(&m->blocked));
-            }
-            SYSCALL_ARGUMENTS.rax = ALL_OK;
+          if(!m->taken) {
+            kprints("ERROR! Mutex must be locked to unlock\n");
+            SYSCALL_ARGUMENTS.rax = ERROR;
+            break;
+
           }
+
+          if(thread_queue_is_empty(&m->blocked)) {
+            m->taken = 0;
+          } else {
+            thread_queue_enqueue(&ready_queue, thread_queue_dequeue(&m->blocked));
+          }
+          SYSCALL_ARGUMENTS.rax = ALL_OK;
           break;
 
         }
@@ -422,19 +447,19 @@ system_call_implementation(void)
           if(c->owner != current_thread_owner) {
             kprints("ERROR! Condition variable not owned by calling process\n");
             SYSCALL_ARGUMENTS.rax = ERROR;
+            break;
           }
-          else if (!m->taken) {
+          if (!m->taken) {
             kprints("ERROR! Mutex not locked\n");
             SYSCALL_ARGUMENTS.rax = ERROR;
-          }
-          else {
-            thread_queue_enqueue(&c->waiting, current_thread);
-            thread_table[current_thread].data.list_data = SYSCALL_ARGUMENTS.rsi;
-            m->taken = 0;
-            schedule = 1;
-            SYSCALL_ARGUMENTS.rax = ALL_OK;
+            break;
           }
 
+          m->taken = 0;
+          thread_queue_enqueue(&c->waiting, current_thread);
+          thread_table[current_thread].data.list_data = SYSCALL_ARGUMENTS.rsi;
+          SYSCALL_ARGUMENTS.rax = ALL_OK;
+          schedule = 1;
           break;
         }
 
@@ -452,13 +477,32 @@ system_call_implementation(void)
             break;
           }
 
-          while((i = thread_queue_head(&c->waiting)) != -1) {
+          if(!thread_queue_is_empty(&c->waiting)) {
+            i = thread_queue_dequeue(&c->waiting);
+            m = &mutex_table[thread_table[i].data.list_data];
+            if(!m->taken) {
+              m->taken = 1;
+              thread_queue_enqueue(&ready_queue, i);
+              kprints("released\n");
+            } else {
+              thread_queue_enqueue(&m->blocked, i);
+            }
+          }
+
+          /*
+          while(!thread_queue_is_empty(&c->waiting)) {
+            i = thread_queue_head(&c->waiting);
             m = &mutex_table[thread_table[i].data.list_data];
             if(!m->taken) {
               m->taken = 1;
               thread_queue_enqueue(&ready_queue, thread_queue_dequeue(&c->waiting));
+              kprints("released\n");
+            } else {
+              kprints("ERROR! Mutex shouldnt be locked\n");
+              break;
             }
           }
+          */
           SYSCALL_ARGUMENTS.rax = ALL_OK;
           break;
         }
