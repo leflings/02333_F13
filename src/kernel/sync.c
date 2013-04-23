@@ -87,10 +87,16 @@ void
 initialize_thread_synchronization(void)
 {
 	/* In task 6, add code here. */
+  initialize_mutexes();
+  initialize_condition_variables();
 }
 /* Put any code you need to add to implement tasks B5, A5, B6 or A6 here. */
 struct semaphore
 semaphore_table[MAX_NUMBER_OF_SEMAPHORES];
+struct mutex
+mutex_table[MAX_NUMBER_OF_MUTEXES];
+struct condition_variable
+cvar_table[MAX_NUMBER_OF_COND_VAR];
 
 void
 initialize_semaphores(void)
@@ -106,6 +112,23 @@ initialize_semaphores(void)
 		thread_queue_init(&semaphore_table[i].blocked);
 	}
 }
+
+void initialize_mutexes() {
+  register int i;
+  for(i=0; i < MAX_NUMBER_OF_MUTEXES; i++) {
+    mutex_table[i].owner = -1;
+    thread_queue_init(&mutex_table[i].blocked);
+  }
+}
+
+void initialize_condition_variables() {
+  register int i;
+  for(i=0; i < MAX_NUMBER_OF_COND_VAR; i++) {
+    cvar_table[i].owner = -1;
+    thread_queue_init(&cvar_table[i].waiting);
+  }
+}
+
 void
 semaphoreup(struct semaphore* s){
 	if(!thread_queue_is_empty(&s->blocked)){

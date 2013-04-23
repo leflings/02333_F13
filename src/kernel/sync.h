@@ -55,6 +55,9 @@ initialize_thread_synchronization(void);
    here. */
 
 #define MAX_NUMBER_OF_SEMAPHORES     (250)
+#define MAX_NUMBER_OF_MUTEXES        (250)
+#define MAX_NUMBER_OF_COND_VAR       (250)
+
 struct semaphore
 {
 	int owner;
@@ -64,5 +67,21 @@ struct semaphore
 };
 extern struct semaphore
 semaphore_table[MAX_NUMBER_OF_SEMAPHORES];
+
+struct mutex {
+  int owner;
+  unsigned int taken;
+  struct thread_queue blocked;
+};
+extern struct mutex
+mutex_table[MAX_NUMBER_OF_MUTEXES];
+
+struct condition_variable
+{
+  int owner;
+  struct thread_queue waiting;
+};
+extern struct condition_variable
+cvar_table[MAX_NUMBER_OF_COND_VAR];
 
 #endif

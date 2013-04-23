@@ -325,6 +325,143 @@ system_call_implementation(void)
 		break;
 	}
 
+	case SYSCALL_CREATEMUTEX:
+        {
+          int i;
+          int current_thread = cpu_private_data.thread_index;
+          int current_thread_owner = thread_table[current_thread].data.owner;
+
+          for(i = 0; i < MAX_NUMBER_OF_MUTEXES; i++) {
+            if(mutex_table[i].owner < 0) {
+              mutex_table[i].owner = current_thread_owner;
+              mutex_table[i].taken = 0;
+              SYSCALL_ARGUMENTS.rax = i;
+              break;
+            }
+          }
+
+          if(i == MAX_NUMBER_OF_MUTEXES) {
+            SYSCALL_ARGUMENTS.rax = ERROR;
+          }
+          break;
+        }
+
+	case SYSCALL_MUTEXLOCK:
+        {
+          int current_thread = cpu_private_data.thread_index;
+          int current_thread_owner = thread_table[current_thread].data.owner;
+          struct mutex* m = &mutex_table[SYSCALL_ARGUMENTS.rdi];
+
+          if(m->owner != current_thread_owner) {
+            kprints("ERROR! Mutex not owned by calling process\n");
+            SYSCALL_ARGUMENTS.rax = ERROR;
+          }
+          else
+          {
+            if(m->taken) {
+              thread_queue_enqueue(&m->blocked, current_thread);
+              schedule = 1;
+            } else {
+              m->taken = 1;
+            }
+            SYSCALL_ARGUMENTS.rax = ALL_OK;
+          }
+          break;
+        }
+
+	case SYSCALL_MUTEXUNLOCK:
+        {
+          int current_thread = cpu_private_data.thread_index;
+          int current_thread_owner = thread_table[current_thread].data.owner;
+          struct mutex* m = &mutex_table[SYSCALL_ARGUMENTS.rdi];
+
+          if(m->owner != current_thread_owner) {
+            kprints("ERROR! Mutex not owned by calling process\n");
+            SYSCALL_ARGUMENTS.rax = ERROR;
+          }
+          else
+          {
+            if(thread_queue_is_empty(&m->blocked)) {
+              m->taken = 0;
+            } else {
+              thread_queue_enqueue(&ready_queue, thread_queue_dequeue(&m->blocked));
+            }
+            SYSCALL_ARGUMENTS.rax = ALL_OK;
+          }
+          break;
+
+        }
+
+	case SYSCALL_CREATECONDITIONVARIABLE:
+        {
+          int current_thread = cpu_private_data.thread_index;
+          int current_thread_owner = thread_table[current_thread].data.owner;
+          int i;
+
+          for(i = 0; i < MAX_NUMBER_OF_COND_VAR; i++) {
+            if(cvar_table[i].owner < 0) {
+              cvar_table[i].owner = current_thread_owner;
+              SYSCALL_ARGUMENTS.rax = i;
+              break;
+            }
+          }
+          if(i == MAX_NUMBER_OF_COND_VAR) {
+            SYSCALL_ARGUMENTS.rax = ERROR;
+          }
+          break;
+
+        }
+
+	case SYSCALL_CONDITIONVARIABLEWAIT:
+        {
+          int current_thread = cpu_private_data.thread_index;
+          int current_thread_owner = thread_table[current_thread].data.owner;
+          struct condition_variable* c = &cvar_table[SYSCALL_ARGUMENTS.rdi];
+          struct mutex* m = &mutex_table[SYSCALL_ARGUMENTS.rsi];
+
+          if(c->owner != current_thread_owner) {
+            kprints("ERROR! Condition variable not owned by calling process\n");
+            SYSCALL_ARGUMENTS.rax = ERROR;
+          }
+          else if (!m->taken) {
+            kprints("ERROR! Mutex not locked\n");
+            SYSCALL_ARGUMENTS.rax = ERROR;
+          }
+          else {
+            thread_queue_enqueue(&c->waiting, current_thread);
+            thread_table[current_thread].data.list_data = SYSCALL_ARGUMENTS.rsi;
+            m->taken = 0;
+            schedule = 1;
+            SYSCALL_ARGUMENTS.rax = ALL_OK;
+          }
+
+          break;
+        }
+
+	case SYSCALL_CONDITIONVARIABLESIGNAL:
+        {
+          int i;
+          int current_thread = cpu_private_data.thread_index;
+          int current_thread_owner = thread_table[current_thread].data.owner;
+          struct condition_variable* c = &cvar_table[SYSCALL_ARGUMENTS.rdi];
+          struct mutex* m;
+
+          if(c->owner != current_thread_owner) {
+            kprints("ERROR! Condition variable not owned by calling process\n");
+            SYSCALL_ARGUMENTS.rax = ERROR;
+            break;
+          }
+
+          while((i = thread_queue_head(&c->waiting)) != -1) {
+            m = &mutex_table[thread_table[i].data.list_data];
+            if(!m->taken) {
+              m->taken = 1;
+              thread_queue_enqueue(&ready_queue, thread_queue_dequeue(&c->waiting));
+            }
+          }
+          SYSCALL_ARGUMENTS.rax = ALL_OK;
+          break;
+        }
 
 	/* Do not touch any lines above or including this line. */
 
