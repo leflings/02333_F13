@@ -477,7 +477,7 @@ system_call_implementation(void)
             break;
           }
 
-          if(!thread_queue_is_empty(&c->waiting)) {
+          while(!thread_queue_is_empty(&c->waiting)) {
             i = thread_queue_dequeue(&c->waiting);
             m = &mutex_table[thread_table[i].data.list_data];
             if(!m->taken) {

@@ -29,16 +29,16 @@ void thread(void)
  {
 
   long value;
-   pause(300);
+   pause(50);
 
    if(ALL_OK != mutex_lock(mutex_handle)) {
      prints("mutex_lock failed\n");
      break;
    }
-   if(count == 0) {
+   while(count == 0) {
      conditionvariablewait(empty_condition_variable, mutex_handle);
    }
-   prints("1Consuming: ");
+   prints("-  ");
    printhex(count--);
    prints(" -> ");
    printhex(count);
@@ -62,16 +62,16 @@ void thread3(void)
  {
 
   long value;
-   pause(300);
+   pause(150);
 
    if(ALL_OK != mutex_lock(mutex_handle)) {
      prints("mutex_lock failed\n");
      break;
    }
-   if(count == 0) {
+   while(count == 0) {
      conditionvariablewait(empty_condition_variable, mutex_handle);
    }
-   prints("2Consuming: ");
+   prints("-- ");
    printhex(count--);
    prints(" -> ");
    printhex(count);
@@ -93,16 +93,16 @@ void thread2(void)
  /* This is the second producer. */
  while(1)
  {
-   pause(200);
+   pause(100);
 
    if(ALL_OK != mutex_lock(mutex_handle)) {
      prints("mutex_lock failed\n");
      break;
    }
-   if(count == max) {
+   while(count == max) {
      conditionvariablewait(full_condition_variable, mutex_handle);
    }
-   prints("2Producing: ");
+   prints("++ ");
    printhex(count++);
    prints(" -> ");
    printhex(count);
@@ -186,16 +186,16 @@ main(int argc, char* argv[])
  /* This is the producer. */
  while(1)
  {
-   pause(100);
+   pause(counter++%200);
 
    if(ALL_OK != mutex_lock(mutex_handle)) {
      prints("mutex_lock failed\n");
      break;
    }
-   if(count == max) {
+   while(count == max) {
      conditionvariablewait(full_condition_variable, mutex_handle);
    }
-   prints("1Producing: ");
+   prints("+  ");
    printhex(count++);
    prints(" -> ");
    printhex(count);
