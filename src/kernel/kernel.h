@@ -386,6 +386,17 @@ scheduler_called_from_timer_interrupt_handler(const register int thread_changed
                                                    has updated scheduling data 
                                                    structures.  */); 
 
+/*! Initializes the network subsystem. */
+extern void
+initialize_network(void);
+
+/*! Process one network frame. */
+extern void
+network_handle_frame(register const unsigned char* const frame
+                     /*!< Pointer to the Ethernet frame to be processed. */,
+                     register const unsigned int length
+                     /*!< Length of the frame to be processed. */);
+
 /*! Wrapper for a byte out instruction. */
 inline static void
 outb(const register unsigned short port_number, 

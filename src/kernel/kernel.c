@@ -8,6 +8,7 @@
 #include "threadqueue.h"
 #include "mm.h"
 #include "sync.h"
+#include "network.h"
 
 /* Note: Look in kernel.h for documentation of global variables and
    functions. */
@@ -450,6 +451,8 @@ initialize(void)
  initialize_memory_protection();
  initialize_ports();
  initialize_thread_synchronization();
+ initialize_ne2k();
+ initialize_network();
 
  /* All sub-systems are now initialized. Kernel areas can now get the right
     memory protection. */
@@ -589,7 +592,7 @@ initialize(void)
   }
  } 
 
- /* Now we set up the interrupt controller to allow timer and keyboard 
+ /* Now we set up the interrupt controller to allow timer, keyboard and ne2k
     interrupts. */
  outb(0x20, 0x11);
  outb(0xA0, 0x11);
@@ -603,7 +606,7 @@ initialize(void)
  outb(0x21, 1);
  outb(0xA1, 1);
 
- outb(0x21, 0xfc);
+ outb(0x21, 0xf4);
  outb(0xA1, 0xff);
 
  clear_screen();
@@ -964,6 +967,12 @@ interrupt_dispatcher(const unsigned long interrupt_number)
    break;
   }
 
+  case 35:
+  {
+   ne2k_interrupt_handler();
+   break;
+  }
+
   case 39:
   {
    /* Spurious interrupt occurred. This could happen if we spend too long 
@@ -992,5 +1001,285 @@ interrupt_dispatcher(const unsigned long interrupt_number)
    outb(0xa0, 0x20);
   }
   outb(0x20, 0x20);
+ }
+}
+
+void
+initialize_network(void)
+{
+ /* This fuction is empty for now. We only support ARP and ICMP Echo which
+    do not need any elaborate initialization. */
+}
+
+#define ETHERNET_FRAME_HEADER_LENGTH (14)
+#define ARP_PACKET_LENGTH (28)
+#define IPv4_HEADER_LENGTH (20)
+
+static unsigned short
+calculate_checksum(register const unsigned char* const data,
+                   register const unsigned int length)
+{
+ register unsigned int checksum = 0;
+ register int i = 0;
+
+ for(; i < (length -1); i+=2)
+ {
+  checksum += *((unsigned short *)(&data[i]));
+ }
+
+ if (length != i)
+  checksum += data[length];
+
+ return (checksum & 0xffff) + (checksum >> 16);
+}
+
+void
+network_handle_frame(register const unsigned char* const frame,
+                     register const unsigned int length)
+{
+ /* This is not a full or even very compliant network stack. We make a lot of
+    assumptions and for example ignore IEEE 802.2 LLC and SNAP frame formats. */
+
+ /* Sanity check. Should not happen. */
+ if (ETHERNET_FRAME_HEADER_LENGTH > length)
+  return;
+
+ /* Ethernet frame too long. */
+ if (1518 < length)
+  return;
+
+ /* Check if the frame was broadcast. */
+ if ((0xff == frame[0]) &&
+     (0xff == frame[1]) &&
+     (0xff == frame[2]) &&
+     (0xff == frame[3]) &&
+     (0xff == frame[4]) &&
+     (0xff == frame[5]))
+ {
+  /* Very likely an ARP request. Check typelen. */
+  if ((8 == frame[12]) &&
+      (6 == frame[13]) &&
+      ((ETHERNET_FRAME_HEADER_LENGTH + ARP_PACKET_LENGTH) <= length))
+  {
+   /* We have found a likely ARP request. Check it. */
+
+   if (/* Check various header fields such as address lengths and types. */
+       (            0 == frame[ETHERNET_FRAME_HEADER_LENGTH]) &&
+       (            1 == frame[ETHERNET_FRAME_HEADER_LENGTH + 1]) &&
+       (          0x8 == frame[ETHERNET_FRAME_HEADER_LENGTH + 2]) &&
+       (            0 == frame[ETHERNET_FRAME_HEADER_LENGTH + 3]) &&
+       (            6 == frame[ETHERNET_FRAME_HEADER_LENGTH + 4]) &&
+       (            4 == frame[ETHERNET_FRAME_HEADER_LENGTH + 5]) &&
+       /* Check that we got an ARP request. */
+       (            0 == frame[ETHERNET_FRAME_HEADER_LENGTH + 6]) &&
+       (            1 == frame[ETHERNET_FRAME_HEADER_LENGTH + 7]) &&
+       /* Check that it was for us. ARP requests are broadcast so we will get
+          requests for everyone on our subnet. */
+       ( IP_ADDRESS_0 == frame[ETHERNET_FRAME_HEADER_LENGTH + 24]) &&
+       ( IP_ADDRESS_1 == frame[ETHERNET_FRAME_HEADER_LENGTH + 25]) &&
+       ( IP_ADDRESS_2 == frame[ETHERNET_FRAME_HEADER_LENGTH + 26]) &&
+       ( IP_ADDRESS_3 == frame[ETHERNET_FRAME_HEADER_LENGTH + 27])
+      )
+   {
+    /* Everything looks good. Create a reply. */
+    unsigned char transmitt_buffer[60];
+    register int i;
+
+    /* Create the Ethernet frame header. */
+    transmitt_buffer[0] = frame[6];
+    transmitt_buffer[1] = frame[7];
+    transmitt_buffer[2] = frame[8];
+    transmitt_buffer[3] = frame[9];
+    transmitt_buffer[4] = frame[10];
+    transmitt_buffer[5] = frame[11];
+
+    /* The driver will fill in the source MAC address! */
+
+    transmitt_buffer[12] = 8;
+    transmitt_buffer[13] = 6;
+
+    /* Create the ARP reply packet. */
+    /* Address types and lengths. */
+    transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 0] = 0;
+    transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 1] = 1;
+    transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 2] = 8;
+    transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 3] = 0;
+    transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 4] = 6;
+    transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 5] = 4;
+    /* ARP reply. */
+    transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 6] = 0;
+    transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 7] = 2;
+    /* Senders (our) hardware address. */
+    transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 8]  = MAC_ADDRESS_0;
+    transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 9]  = MAC_ADDRESS_1;
+    transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 10] = MAC_ADDRESS_2;
+    transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 11] = MAC_ADDRESS_3;
+    transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 12] = MAC_ADDRESS_4;
+    transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 13] = MAC_ADDRESS_5;
+    /* Senders IP address. */
+    transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 14] = IP_ADDRESS_0;
+    transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 15] = IP_ADDRESS_1;
+    transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 16] = IP_ADDRESS_2;
+    transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 17] = IP_ADDRESS_3;
+    /* Copy the destination MAC and IP addresses from the request. */
+    for(i = 0; i < 10; i++)
+     transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 18 + i] =
+      frame[ETHERNET_FRAME_HEADER_LENGTH + 8 + i];
+
+    /* Clear the padding. */
+    for(i = ETHERNET_FRAME_HEADER_LENGTH + ARP_PACKET_LENGTH;
+        i < 60;
+        i++)
+     transmitt_buffer[i] = 0;
+
+    ne2k_send_frame(transmitt_buffer, 60);
+   }
+  }
+  return;
+ }
+
+ if ((MAC_ADDRESS_0 == frame[0]) &&
+     (MAC_ADDRESS_1 == frame[1]) &&
+     (MAC_ADDRESS_2 == frame[2]) &&
+     (MAC_ADDRESS_3 == frame[3]) &&
+     (MAC_ADDRESS_4 == frame[4]) &&
+     (MAC_ADDRESS_5 == frame[5]))
+ {
+  /* ICMP Echo could have been sent to us. We check typelen and if there is
+     an IP header. */
+  if ((0x08 == frame[12]) &&
+      (0x00 == frame[13]) &&
+      ((ETHERNET_FRAME_HEADER_LENGTH + IPv4_HEADER_LENGTH) <= length))
+  {
+   /* IPv4 header. Check if it is for us and if it is an ICMP Echo. */
+   if (/* Check the destination IP address to see if the IP packet is to us. */
+       (IP_ADDRESS_0 == frame[ETHERNET_FRAME_HEADER_LENGTH + 16]) &&
+       (IP_ADDRESS_1 == frame[ETHERNET_FRAME_HEADER_LENGTH + 17]) &&
+       (IP_ADDRESS_2 == frame[ETHERNET_FRAME_HEADER_LENGTH + 18]) &&
+       (IP_ADDRESS_3 == frame[ETHERNET_FRAME_HEADER_LENGTH + 19]) &&
+       /* Check if it is an ICMP packet. */
+       (0x1 == frame[ETHERNET_FRAME_HEADER_LENGTH + 9]) &&
+       /* Check various header fields. */
+       (0x45 == frame[ETHERNET_FRAME_HEADER_LENGTH + 0]) &&
+       (0 == (0xbf & frame[ETHERNET_FRAME_HEADER_LENGTH + 6])) &&
+       (0 == frame[ETHERNET_FRAME_HEADER_LENGTH + 7])
+      )
+   {
+    /* So far things looks ok. We need to check the checksum though. */
+    if (0xffff == calculate_checksum(&frame[ETHERNET_FRAME_HEADER_LENGTH],
+                                     IPv4_HEADER_LENGTH))
+    {
+     register const unsigned int ip_packet_length =
+      (frame[ETHERNET_FRAME_HEADER_LENGTH + 2] << 8) |
+      frame[ETHERNET_FRAME_HEADER_LENGTH + 3];
+     /* checksum is fine. Continue checking the frame length and the ICMP
+        header. */
+     if (((ip_packet_length + ETHERNET_FRAME_HEADER_LENGTH) <= length) &&
+         ((IPv4_HEADER_LENGTH + 4) <= ip_packet_length) &&
+         /* Check the ICMP type and code. */
+         (8 == frame[ETHERNET_FRAME_HEADER_LENGTH + IPv4_HEADER_LENGTH]) &&
+         (0 == frame[ETHERNET_FRAME_HEADER_LENGTH + IPv4_HEADER_LENGTH + 1]))
+     {
+      /* We have an ICMP Echo packet. Check its checksum. */
+      if (0xffff == calculate_checksum(&frame[ETHERNET_FRAME_HEADER_LENGTH +
+                                              IPv4_HEADER_LENGTH],
+                                       ip_packet_length - IPv4_HEADER_LENGTH))
+      {
+       /* So far everything looks ok. Build a reply. */
+       unsigned char transmitt_buffer[1518];
+       register unsigned int frame_length = ETHERNET_FRAME_HEADER_LENGTH +
+                                            ip_packet_length;
+       register unsigned short checksum;
+       register int i;
+
+       /* Create the Ethernet frame header. */
+       transmitt_buffer[0] = frame[6];
+       transmitt_buffer[1] = frame[7];
+       transmitt_buffer[2] = frame[8];
+       transmitt_buffer[3] = frame[9];
+       transmitt_buffer[4] = frame[10];
+       transmitt_buffer[5] = frame[11];
+
+       /* The driver will fill in the source MAC address. */
+
+       transmitt_buffer[12] = 0x08;
+       transmitt_buffer[13] = 0;
+
+       /* Clear the IP header. */
+       for(i = 0; i < IPv4_HEADER_LENGTH; i++)
+        transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + i] = 0;
+
+       /* Write IP header. */
+       transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 0] = 0x45;
+       transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 8] = 64;
+       transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 9] = 1;
+
+       /* IP packet length is the same as for the request. */
+       transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 2] =
+        frame[ETHERNET_FRAME_HEADER_LENGTH + 2];
+       transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 3] =
+        frame[ETHERNET_FRAME_HEADER_LENGTH + 3];
+
+       /* Set source IP address. */
+       transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 12] = IP_ADDRESS_0;
+       transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 13] = IP_ADDRESS_1;
+       transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 14] = IP_ADDRESS_2;
+       transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 15] = IP_ADDRESS_3;
+
+       /* Copy destination IP address. */
+       transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 16] =
+        frame[ETHERNET_FRAME_HEADER_LENGTH + 12];
+       transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 17] =
+        frame[ETHERNET_FRAME_HEADER_LENGTH + 13];
+       transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 18] =
+        frame[ETHERNET_FRAME_HEADER_LENGTH + 14];
+       transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH + 19] =
+        frame[ETHERNET_FRAME_HEADER_LENGTH + 15];
+
+       /* Write IP checksum. */
+       checksum = calculate_checksum(
+                   &transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH],
+                   IPv4_HEADER_LENGTH);
+       *((unsigned short*) &transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH +
+                                             10]) = 0xffff ^ checksum;
+
+       /* Write an ICMP Echo reply header. */
+       transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH +
+                        IPv4_HEADER_LENGTH] = 0;
+       transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH +
+                        IPv4_HEADER_LENGTH + 1] = 0;
+       transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH +
+                        IPv4_HEADER_LENGTH + 2] = 0;
+       transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH +
+                        IPv4_HEADER_LENGTH + 3] = 0;
+
+       /* Copy ICMP data. */
+       for(i = 0; i < (ip_packet_length - IPv4_HEADER_LENGTH - 4); i++)
+        transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH +
+                         IPv4_HEADER_LENGTH + 4 + i] =
+         frame[ETHERNET_FRAME_HEADER_LENGTH + IPv4_HEADER_LENGTH + 4 + i];
+
+       /* Write ICMP checksum. */
+       checksum = calculate_checksum(
+                   &transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH +
+                                     IPv4_HEADER_LENGTH],
+                   ip_packet_length - IPv4_HEADER_LENGTH);
+       *((unsigned short*) &transmitt_buffer[ETHERNET_FRAME_HEADER_LENGTH +
+                                             IPv4_HEADER_LENGTH + 2]) =
+                            0xffff ^ checksum;
+
+       /* Clear any padding. */
+       for(i = frame_length; i < 60; i++)
+        transmitt_buffer[i] = 0;
+
+       if (60 > frame_length)
+        frame_length = 60;
+
+       ne2k_send_frame(transmitt_buffer, frame_length);
+      }
+     }
+    }
+   }
+  }
  }
 }
