@@ -13,7 +13,8 @@
  # boot image. More information on the multiboot standard can be found
  # at http://www.gnu.org/software/grub/manual/multiboot/
  .global _start
-
+ .global halt_the_machine
+	
 _start:
  jmp    after_multiboot_header
  .align 4
@@ -54,6 +55,14 @@ after_multiboot_header:
                               # the BIOS keeps from us
  jl     halt_the_machine      # Yikes! Too little memory
 
+ xor    %ecx,%ecx
+ movl   $start_of_bss,%esi
+bss_clear_loop:
+ mov    %ecx,(%esi)
+ add    $4,%esi
+ cmp    $end_of_bss,%esi
+ js     bss_clear_loop
+
  # Set the memory_size variable to the amount of available memory
  # in kilobytes. This value will be adjusted later to bytes.
  movl   %eax,memory_size
@@ -88,9 +97,13 @@ after_multiboot_header:
  jle    halt_the_machine  # CPUID does not support the input values we need!
  movl   $1,%eax
  cpuid
- andl   $0x0380a971,%edx
- cmpl   $0x0380a971,%edx
+ andl   $0x0380ab71,%edx
+ cmpl   $0x0380ab71,%edx
  jne    halt_the_machine  # Great all basic functions we need are there!
+ # Check that the BSP has APIC id 0
+ shr    $24,%ebx
+ test   %bl,%bl
+ jne    halt_the_machine	
  # Now check if we can get into 64-bit mode
  mov    $0x80000000,%eax
  cpuid
@@ -105,6 +118,9 @@ after_multiboot_header:
  jnc    halt_the_machine  # NX bit is not supported and we use it...
 
  # Cool! The CPU can be turned into 64-bit mode. Let us do that!
+ # But first, parse the acpi tables before we enable paging and the
+ # tables potentially becomes inaccessible.
+ call   parse_acpi_tables
 
  # First enable 64-bit page table entries by setting the PAE bit
  movl   %cr4,%eax
@@ -132,7 +148,7 @@ after_multiboot_header:
  movl   %eax,%cr0
 
  movl   $pml4_base,%ebx
- movl   $TSS_descriptor,%edx
+ movl   $gdt_32_descriptors,%edx
  movl   memory_size,%edi
 	
  # We can now do a long jump into the 64-bit code (in boot64.s)
@@ -143,7 +159,7 @@ after_multiboot_header:
  # This is the pseduo-descriptor for the 32-bit GDT which holds the segment
  # descriptors we need.
 gdt_32:
- .word  55
+ .word  16*16+7*8-1
  .int   gdt_32_descriptors
 
  # It is good idea to align the GDT descriptors on an even 8 byte boundary
@@ -156,22 +172,62 @@ gdt_32_descriptors:
  # Supervisor mode descriptors
  .int   0xffff,0x00af9b00 # Long mode descriptor for a 64-bit code segment
  .int   0xffff,0x008f9200 # Long mode descriptor for a 64-bit data segment
- # Descriptor for the TSS (not used until assignment 3)
-TSS_descriptor:
+ # Descriptor for the TSS
+TSS_descriptors:
+ .rept  16
  .quad  0, 0
+ .endr
+ .int   0xffff,0x00cf9a00 | (0x10000>>16)
+                          # 32-bit supervisor code segment
+ .int   0xffff,0x00cf9200 # 32-bit supervisor data segment
+
 
  # The page table tree is hardcoded in the data segment. This is not very
  # elegant and wastes space but works and reduces the amount of assembly code.
  # The tree is normally built dynamically. See AMD64 Programmers Manual Vol. 2
  # for an explanation of the page translation mechanism.
  .align 4096
+apic_pte:
+ .set   curr_address,0xfee00000
+
+ .rept  512
+ # The APIC and IO-APIC must have the strong uncacheable memory type.
+ # A production operating system would use PAT or a MTRR to ensure this.
+ # To simplify the code, we assume the BIOS has already set up a MTRR to
+ # cover the APIC and IO-APICs memory ranges.
+ .int   curr_address+0x3,0
+ .set   curr_address,curr_address+4096
+ .endr
+
+ .align 4096
+ioapic_pte:
+ .set   curr_address,0xfec00000
+
+ .rept  512
+ # The APIC and IO-APIC must have the strong uncacheable memory type.
+ # A production operating system would use PAT or a MTRR to ensure this.
+ # To simplify the code, we assume the BIOS has already set up a MTRR to
+ # cover the APIC and IO-APICs memory ranges.
+ .int   curr_address+0x3,0
+ .set   curr_address,curr_address+4096
+ .endr
+	
+apic_pde_base:
+ .rept  256
+ .int   ioapic_pte+7,0
+ .int   apic_pte+7,0
+ .endr
+
 pml4_base:
  .int   pdpe_base+7,0  # We know the lowest 12 bits of the address are zero
  .skip  4096-8
 
 pdpe_base:
  .int   pde_base+7,0
- .skip  4096-8
+ .int   0,0
+ .int   0,0
+ .int   apic_pde_base+7,0	
+ .skip  4096-32
 
 pde_base:
  .int   pte_page_0+7,0

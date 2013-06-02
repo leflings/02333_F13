@@ -3,15 +3,18 @@
 
  .text
  .global _start
- .global cpu_private_data
+ .global AP_init
 	
 # This is the 64-bit kernel entry point
 _start:
  # Save addresses carried over from the 32-bit kernel in temporary registers
+ # or safe loctions
  mov    %rdx,%r15
+ mov    %edx,gdt_32+2
+ add    $40,%r15
 
  # We can now set the kernel stack
- mov    $stack,%rsp
+ mov    $kernel_stack_base,%rsp
  
  # Set all flags to a well defined state
  push   $0
@@ -29,41 +32,32 @@ bss_clear_loop:
  jnz    bss_clear_loop
 
  # Save addresses carried over from the 32-bit kernel in temporary registers
- mov    %rbx,cpu_private_data+8
- # Set up the kernel page table root.
- movq   %rbx,kernel_page_table_root	
 
+ # Set up the kernel page table root.
+ movq   %rbx,kernel_page_table_root
+ # APIC id bit field
+ movq   %r14,APIC_id_bit_field
+ # compressed PIC interrupt map 
+ movq   %r13,pic_interrupt_bitfield
+ # and number of available CPUs
+ movl   %r12d,number_of_available_CPUs
+	
  # Set the memory_size variable. We need to convert from kbytes to bytes.
  # That means multiplying with 1024 which is the same thing as shifting ten
  # bits.
  shl    $10,%rdi
  mov    %rdi,memory_size
 
- # Set the FS base to 0
- mov    $0xc0000100,%ecx
- xor    %eax,%eax
- xor    %edx,%edx
- wrmsr  # must use the wrmsr instruction to write a 64-bit value to FS, GS 
-        # and KernelGS
- 
- # And the GS base to point to the private data of the CPU.
- mov    $0xc0000101,%ecx
- mov    $cpu_private_data,%eax
- xor    %edx,%edx
- wrmsr
-
- # And finally the KernelGS base to 0
- mov    $0xc0000102,%ecx
- xor    %eax,%eax
- xor    %edx,%edx
- wrmsr
-
  # We do not set a new GDT since all the descriptors we are interested in are
  # there already and there is no problem for us to have it below the 4Gbyte
  # barrier.
 
- # We set up a TSS descriptor:
- mov    $TSS,%rax
+ # We set up 16 TSS descriptors. One for each CPU.
+ mov    $16,%rdx
+ mov    $TSSes,%rbp
+TSS_setup_loop:
+ mov    %rbp,%rax
+ add    $0x68,%rbp
  mov    %rax,%rbx
  shl    $16,%ebx
  or     $0x67,%ebx
@@ -78,8 +72,11 @@ bss_clear_loop:
  mov    %ebx,4(%r15)
  shr    $32,%rax
  mov    %eax,8(%r15)
+ add    $16,%r15
+ dec    %rdx
+ jnz    TSS_setup_loop
 
- # Set up the entire interrupt descriptor table to point to a dummy handler.
+ # Set up the entire interrupt descriptor table.
  # There are 256 entries in the table
  mov    $256,%rdx
  mov    $IDT,%rbp
@@ -103,8 +100,36 @@ interrupt_setup_loop:
  dec    %rdx
  jnz    interrupt_setup_loop
 
+ # Set the ELF_images_start variable to the start of the linked list of
+ # executable images
+ movq   $start_of_ELF_images,ELF_images_start
+
+ # Set the ELF_images_end variable to the end of the linked list of
+ # executable images
+ movq   $end_of_ELF_images,ELF_images_end
+
+ # Set the first_available_memory_byte variable to the address of the first
+ # available memory byte. The address is rounded of to the nearest higher
+ # address which is evenly dividable with 4096.
+ mov    $end_of_bss,%rax
+ add    $4096-1,%rax
+ and    $-4096,%rax
+ mov    %rax,first_available_memory_byte
+	
+ movl   $40,TSS_selector
+
+ movl   $CPU_private_table,GS_base
+	
+ call   common_initialization
+
+ # We can now switch to c!
+ call   initialize
+
+ jmp    return_to_user_mode
+
+common_initialization:
  # Force the CPU to use the new TSS
- mov    $40,%eax
+ mov   TSS_selector,%eax
  ltr    %ax
 
  # Load the new interrupt handler table
@@ -117,6 +142,25 @@ interrupt_setup_loop:
  add    $6,%rax
  lidt   (%rax)
  add    $16,%rsp
+
+ # Set the FS base to 0
+ mov    $0xc0000100,%ecx
+ xor    %eax,%eax
+ xor    %edx,%edx
+ wrmsr  # must use the wrmsr instruction to write a 64-bit value to FS, GS 
+        # and KernelGS
+
+ # And the GS base to point to the private data of the CPU.
+ mov    $0xc0000101,%ecx
+ mov    GS_base,%eax
+ xor    %edx,%edx
+ wrmsr
+
+ # And finally the KernelGS base to 0
+ mov    $0xc0000102,%ecx
+ xor    %eax,%eax
+ xor    %edx,%edx
+ wrmsr
 
  # We set up the registers necessary to use syscall
  # The registers are STAR, LSTAR, CSTAR and SFMASK.
@@ -148,33 +192,17 @@ interrupt_setup_loop:
  mov    $0x00000300,%eax
  wrmsr
 
- # Set the ELF_images_start variable to the start of the linked list of
- # executable images
- movq   $start_of_ELF_images,ELF_images_start
-
- # Set the ELF_images_end variable to the end of the linked list of
- # executable images
- movq   $end_of_ELF_images,ELF_images_end
-
- # Set the first_available_memory_byte variable to the address of the first
- # available memory byte. The address is rounded of to the nearest higher
- # address which is evenly dividable with 4096.
- mov    $end_of_bss,%rax
- add    $4096-1,%rax
- and    $-4096,%rax
- mov    %rax,first_available_memory_byte
+ # Make sure the local apic is enabled.
+ movl   $0x1b,%ecx
+ rdmsr  # Read APIC_BASE
+ orl    $0x800,%eax
+ wrmsr  # Write APIC_BASE
+ ret	
 	
- # We can now switch to c!
- call   initialize
+AP_init:
+ call   common_initialization
 
+ call   initialize_APIC
+	
+ /* Go wait for work in the idle thread. */
  jmp    return_to_user_mode
-
- .data
- .align 16
-cpu_private_data:
- .quad  0
- .quad  0
- .int   -1
- .int   1
-	
-	

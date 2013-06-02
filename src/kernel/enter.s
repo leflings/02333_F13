@@ -3,19 +3,18 @@
 #  Take help from a teaching assistant!
 
 .global syscall_dummy_target
-.global dummy_interrupt
-.global timer_interrupt
 .global IDT
-.global TSS
-.global stack
+.global TSSes
+.global kernel_stack_base
 .global interrupt_entries
+.global syscall_target
+.global return_to_user_mode
 
 syscall_dummy_target:
  # We should never reach this!
  hlt
  jmp    syscall_dummy_target
 
-.global syscall_target
 syscall_target:
  # Swap in the supervisor gs
  swapgs
@@ -29,8 +28,8 @@ syscall_target:
  mov    %eax,%es
  mov    %eax,%fs
 
- # Get the index to the thread that has run
- mov    %gs:16,%eax
+ # Get the index to the thread that should be saved.
+ mov    %gs:24,%eax
  # mask off everything except the lowest 8 bits
  and    $255,%rax
  # The size of a thread structure is 1024 bytes. We multiply the index with
@@ -62,8 +61,8 @@ syscall_target:
  mov    %gs:0,%rbx
  mov    %rbx,0*8(%rax)
 
- # Set the stack pointer to the supervisor stack
- mov    $stack,%rsp
+ # Set the stack pointer to the supervisor stack of the CPU
+ mov    %gs:16,%rsp
 
  # Save the FPU state
  fxsave -512(%rax)
@@ -71,12 +70,11 @@ syscall_target:
  # call the c portion of the system call handler
  call   system_call_handler
 
-.global return_to_user_mode
 return_to_user_mode:
  # Return to user mode.
 
  # Get the index to the thread that should be run
- mov    %gs:16,%eax
+ mov    %gs:24,%eax
 
  # Check if the index is negative. In that case we should do a context switch
  # to the idle thread.
@@ -132,12 +130,12 @@ no_idle:
  mov    15*8(%rax),%r15
 
  # check if the from_interrupt flag is set
- mov    18*8(%rax),%cl
+ mov    19*8(%rax),%cl
  test   %cl,%cl
  jz     return_via_sysret
  # The from_interrupt flag was set so we return via iret
 
- # Make room on the stack for the interrupt stack frame
+ # Push an interrupt stack frame onto the stack
 
  # Push the user mode SS
  pushq  $11
@@ -198,14 +196,42 @@ return_via_sysret:
 
  # Build interrupt handlers for all 256 interrupt vectors
 
- .align 16
-interrupt_entries:
- .set interrupt_number, 0
- .rept 256
+ .macro build_interrupt_stub_for_error_code
  pushq  $interrupt_number
  jmp    interrupt_handler
  .align 16
- .set interrupt_number, interrupt_number+1
+ .set interrupt_number, interrupt_number+1	
+ .endm
+
+ .macro build_interrupt_stub_no_error_code
+ pushq  $0
+ build_interrupt_stub_for_error_code
+ .endm
+	
+	
+ .align 16
+interrupt_entries:
+ .set interrupt_number, 0
+ .rept 8
+ build_interrupt_stub_no_error_code
+ .endr
+
+ build_interrupt_stub_for_error_code
+
+ build_interrupt_stub_no_error_code
+
+ .rept 5
+ build_interrupt_stub_for_error_code
+ .endr
+
+ build_interrupt_stub_no_error_code
+
+ build_interrupt_stub_no_error_code
+
+ build_interrupt_stub_for_error_code	
+	
+ .rept 256-18
+ build_interrupt_stub_no_error_code
  .endr
 
  # Handler for all interrupts and exceptions
@@ -222,7 +248,7 @@ interrupt_handler:
  mov    %ebp,%fs
 
  # Load the index of the running thread
- mov   %gs:16,%ebp
+ mov    %gs:24,%ebp
 
  # Check if the index is negative. In that case we came here from the idle
  # thread and we should not save any context.
@@ -233,7 +259,7 @@ interrupt_handler:
 	
  # Check if we got an exception or interrupt
  mov    8(%rsp),%rdi
- add    $48+8,%rsp
+ add    $48+8+8,%rsp
  cmp    $32,%rdi
  jge    go_to_c
 
@@ -285,6 +311,9 @@ not_in_kernel:
  # Pop interrupt number
  popq   %rdi
 	
+ # Pop error code
+ popq   18*8(%rbp)
+
  popq   17*8(%rbp)         # Pop the rip
  pop    %rax
  popq   16*8(%rbp)         # Pop the rflags
@@ -294,7 +323,7 @@ not_in_kernel:
  # Set the interrupt flag to indicate that the context was saved in an
  # interrupt handler.
  mov    $1,%eax
- mov    %al,18*8(%rbp)
+ mov    %al,19*8(%rbp)
 
 go_to_c:
  # Call the timer interrupt handler
@@ -304,29 +333,37 @@ go_to_c:
 
  .data
  .align 8
-TSS:
- # This is the 64-bit TSS. It is used when processing interrupts
+TSSes:
+ # This is an array of 64-bit TSS structures. They are used when processing 
+ # interrupts
+ .set stack_number,0
+	
+ .rept 16
  .int  0
- .quad  stack
- .quad  stack
- .quad  stack
+ .quad  kernel_stack_base-stack_number*2*4096
+ .quad  kernel_stack_base-stack_number*2*4096
+ .quad  kernel_stack_base-stack_number*2*4096
  .quad  0
- .quad  stack
- .quad  stack
- .quad  stack
- .quad  stack
- .quad  stack
- .quad  stack
- .quad  stack
+ .quad  kernel_stack_base-stack_number*2*4096
+ .quad  kernel_stack_base-stack_number*2*4096
+ .quad  kernel_stack_base-stack_number*2*4096
+ .quad  kernel_stack_base-stack_number*2*4096
+ .quad  kernel_stack_base-stack_number*2*4096
+ .quad  kernel_stack_base-stack_number*2*4096
+ .quad  kernel_stack_base-stack_number*2*4096
  .quad  0
  .int   0x00680000
+
+ .set stack_number,stack_number-1
+ .endr
+	
  .bss
  .align 8
- # We reserve two pages for stack
+ # We reserve two pages for stack per CPU
  .align 8
- .skip  2*4096
-stack:
- .align  8
+ .skip  16*2*4096
+kernel_stack_base:
+ .align 8
 IDT:
  # This is the 64-bit interrupt descriptor table. It holds a list of
  # interrupt handler routines.

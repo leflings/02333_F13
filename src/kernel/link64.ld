@@ -11,16 +11,16 @@ PHDRS
 
 SECTIONS
 {
-  kernel64_start = 0x00115000;
+  kernel64_start = 0x00119000;
   . = SIZEOF_HEADERS;
 
   /* You can make to image to be much more compact. This link script
      was done so that it is remotely possible to read. It is complex 
      but could have been much more complex.*/
-  .text (0x00115000 + SIZEOF_HEADERS) :
-   AT (0x00115000 + SIZEOF_HEADERS)
+  .text (0x00119000 + SIZEOF_HEADERS) :
+   AT (0x00119000 + SIZEOF_HEADERS)
   {
-   * (.text) /* Any remaining text sections. */
+   * (.text*) /* Any remaining text sections. */
    . = ALIGN(4096);
   } : text
 
@@ -43,7 +43,7 @@ SECTIONS
   .data (ADDR(.rodata) + SIZEOF (.rodata)) :
    AT (LOADADDR(.rodata) + SIZEOF (.rodata))
   {
-   * (.data) /* Any remaining data sections. */
+   * (.data*) /* Any remaining data sections. */
    . = ALIGN(8);
   } : data
   
@@ -52,7 +52,7 @@ SECTIONS
   .bss (ADDR(.data) + SIZEOF (.data)) :
    AT (LOADADDR(.data) + SIZEOF (.data))
   {
-   * (.bss)  /* Any remaining bss sections. */
+   * (.bss*)  /* Any remaining bss sections. */
    . = ALIGN(8);
   }
 

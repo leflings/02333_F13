@@ -12,7 +12,7 @@
 
 /* Macros */
 
-#define SYSCALL_ARGUMENTS (thread_table[cpu_private_data.thread_index].\
+#define SYSCALL_ARGUMENTS (thread_table[get_current_thread()]. \
                            data.registers.integer_registers)
 /*!< Macro used in the system call switch to access the arguments to the 
      system call. */
@@ -22,8 +22,19 @@
 
 #define MAX_NUMBER_OF_PROCESSES (16)
 /*!< Size of the process_table. */
+#define MAX_NUMBER_OF_EXECUTABLES (16)
+/*!< Maximal number of programs embedded. */
 #define MAX_NUMBER_OF_THREADS   (256)
 /*!< Size of the thread_table. */
+#define MAX_NUMBER_OF_CPUS      (16)
+/*!< Size of the cpu_table and the maximal number of CPUs in the system. */
+#define MAX_GLOBAl_SYSTEM_INTERRUPTS (64)
+/*!< The number of ACPI Global System Interrupts supported by the kernel. The
+     range of interrupts is between 0..MAX_GLOBAL_SYSTEM_INTERRUPTS-1. */
+#define IOAPIC_BASE_ADDRESS     ((volatile unsigned int* const) 0xfec00000UL)
+/*!< The base address for the IO APIC. */
+#define LOCAL_APIC_BASE_ADDRESS ((volatile unsigned int* const) 0xfee00000UL)
+/*!< The base address for the local APIC. */
 
 /* Type declarations */
 
@@ -57,6 +68,10 @@ struct context
       stored as the user mode processes can only use a code and a data segment
       descriptor. We assume that the cs is set to the code and all the rest
       of the segment registers are set to the data segment all the time. */
+
+ long     error_code;
+ /*!< Holds the error code for an exception. */
+
  char     from_interrupt;
  /*!< Is set to 1 if the context is saved during the processing of interrupts.
       Set to 0 otherwise. */
@@ -213,11 +228,19 @@ struct CPU_private
                                       switches. */
  unsigned long  page_table_root; /*!< The root of the page table in use on
                                       the CPU. */
- int            thread_index;    /*!< Index into thread_table of the thread
-                                      executing on the CPU. The idle thread
-                                      has index -1. */
+ unsigned long  stack;           /*!< The kernel stack used by the CPU
+                                      when executing system calls. */
+ int            thread_index;    /*!< Index into thread_table of the
+                                      thread executing on the CPU. The
+                                      idle thread has index -1. */
+ int            CPU_index;       /*!< Index for this CPU. */
+
  int            ticks_left_of_time_slice;
-                                 /*!< Can be used by a preemptive scheduler. */
+                                 /*!< Can be used by a preemptive
+                                      scheduler. */
+
+ unsigned int   local_apic_id;   /*!< The id of the local APIC connected
+                                      to the CPU. */
 };
 
 struct screen_position
@@ -241,16 +264,49 @@ extern struct screen* const
 screen_pointer;
 /*!< Points to the VGA screen. */
 
+extern volatile unsigned int
+screen_lock;
+/*!< Spin lock used to ensure mutual exclusion to the screen. */
+
+extern volatile unsigned int
+page_frame_table_lock;
+/*!< Spin lock used to ensure mutual exclusion to the page_frame_table. */
+
 extern union thread
 thread_table[MAX_NUMBER_OF_THREADS];
 /*!< Array holding all threads in the systems. */
+
+extern volatile unsigned int
+thread_table_lock;
+/*!< Spin lock used to ensure mutual exclusion to the thread table. */
 
 extern struct process
 process_table[MAX_NUMBER_OF_PROCESSES];
 /*!< Array holding all processes in the system. */
 
+extern volatile unsigned int
+process_table_lock;
+/*!< Spin lock used to ensure mutual exclusion to the process table. */
+
+extern struct CPU_private
+CPU_private_table[MAX_NUMBER_OF_CPUS];
+/*!< Array holding all the data structures private to the CPUs in the system.
+ */
+
+extern unsigned int
+number_of_available_CPUs;
+/*!< The number of available CPUs in the system. */
+
+extern volatile unsigned int
+number_of_initialized_CPUs;
+/*!< The number of initialized CPUs in the system. */
+
+extern volatile unsigned int
+CPU_private_table_lock;
+/*!< Spin lock used to ensure mutual exclusion to CPU_private_table. */
+
 extern struct executable
-executable_table[MAX_NUMBER_OF_PROCESSES];
+executable_table[MAX_NUMBER_OF_EXECUTABLES];
 /*!< Array holding descriptions of all executable programs. */
 
 extern int
@@ -272,6 +328,10 @@ extern struct thread_queue
 ready_queue;
 /*!< The ready queue. */
 
+extern volatile unsigned int
+ready_queue_lock;
+/*!< Spin lock used to ensure mutual exclusion to the ready queue. */
+
 extern int
 timer_queue_head;
 /*!< The index, into thread_table, of the head of the timer queue. The timer
@@ -279,17 +339,63 @@ timer_queue_head;
      a certain time.  This variable is set to -1 if there are no threads in
      the timer queue. */
 
-extern long
+extern volatile unsigned int
+timer_queue_lock;
+/*!< Spin lock used to ensure mutual exclusion to the timer queue. */
+
+extern volatile long
 system_time;
 /*!< This variable holds the current system time. The system time is the
      number of clock  ticks since system start. There are 200 clock ticks
      per second. */
 
-extern struct CPU_private
-cpu_private_data;
-/*!< Holds data private to the CPU. */
+extern unsigned int
+pic_interrupt_map[12];
+/*!< This array maps 12 of the 16 8259 interrupts to ACPI Global System
+     Interrupts. */
+
+extern void*
+AP_boot_stack;
+/*!< This variable is used to pass the inital stack pointer value for the
+     application processor to the bootstrap code for the application
+     processor. */
+
+extern unsigned int
+GS_base;
+/*!< This variable is used to pass the GS base value for the
+     application processor to the bootstrap code for the application
+     processor. */
+
+extern unsigned int
+TSS_selector;
+/*!< This variable is used to pass the TSS selector value for the
+     application processor to the bootstrap code for the application
+     processor. */
+
+extern const char start_application_processor[1];
+/*!< The start of the code that initializes application processors. */
+
+extern const char start_application_processor_end[1];
+/*!< The end of the code that initializes application processors. */
+
+extern unsigned long
+APIC_id_bit_field;
+/*!< Bitfield set by the boot code. Each bit corresponds to a processor's
+     APIC id. */
+
+extern unsigned long
+pic_interrupt_bitfield;
+/*!< Bitfield set by the boot code. Compressed version of the
+     pic_interrupt_map. */
 
 /* Function declarations */
+
+void
+send_IPI(register unsigned char const destination_processor_index,
+         register unsigned int  const vector);
+
+extern void
+initialize_APIC(void);
 
 /*! Helper struct that is used to return values from prepare_process. */
 struct prepare_process_return_value
@@ -428,6 +534,138 @@ inw(const short port_number)
 {
  short return_value;
  __asm volatile("inw %%dx,%%ax" : "=a" (return_value) : "d" (port_number));
+ return return_value;
+}
+
+/*! Get the thread currently executing on the CPU.
+  \returns The index into the thread_table for the current thread. The function
+           returns -1 if the CPU is not executing any thread. */
+inline static const int
+get_current_thread(void)
+{
+ register int current_thread;
+
+ __asm volatile ("mov %%gs:24,%0" : "=r"(current_thread));
+
+ return current_thread;
+}
+
+/*! Get the index for the CPU.
+  \returns The index into the CPU_private_table for the current CPU. */
+inline static const int
+get_processor_index(void)
+{
+ register int current_processor;
+
+ __asm volatile ("mov %%gs:28,%0" : "=r"(current_processor));
+
+ return current_processor;
+}
+
+
+
+/*! Wrapper for a 32-bit locked cmpxchg instruction.
+    \returns The value stored in the variable pointed to by
+    pointer_to_variable before the operation is performed. */
+inline static unsigned int
+lock_cmpxchg(register volatile unsigned int * const pointer_to_variable
+                                                /*!< Pointer to the variable to
+                                                     operate on. */,
+             register unsigned int           old_value
+                                                /*!< The value assumed to be in
+                                                     the variable. */,
+             register const unsigned int     new_value
+                                                /*!< The value to conditionally
+                                                     write to the variable. */)
+{
+ __asm volatile("lock cmpxchgl %k1,%2"
+                : "=a" (old_value)
+                : "r"(new_value), "m" (*pointer_to_variable), "0" (old_value)
+                : "memory");
+
+ return old_value;
+}
+
+
+/*! Grabs a spin lock with write permissions */
+inline static void
+grab_lock_rw(register volatile unsigned int * const spin_lock
+              /*!< Points to the spin lock. */)
+{
+ while (1)
+ {
+  while (*spin_lock !=0);
+
+  if (0 == lock_cmpxchg(spin_lock, 0, 0x80000000))
+   return;
+ }
+}
+
+/*! Grabs a spin lock with read permissions. */
+inline static void
+grab_lock_r(register volatile unsigned int * const spin_lock
+              /*!< Points to the spin lock. */)
+{
+ while (1)
+ {
+  register unsigned int spin_lock_value, new_spin_lock_value;
+
+  while (((*spin_lock) & 0x80000000) !=0);
+
+  new_spin_lock_value = *spin_lock;
+
+  while (1)
+  {
+   spin_lock_value = new_spin_lock_value;
+
+   if (spin_lock_value > 0x7ffffffe)
+    break;
+
+   new_spin_lock_value = lock_cmpxchg(spin_lock,
+                                      spin_lock_value,
+                                      spin_lock_value+1);
+   if (new_spin_lock_value == spin_lock_value)
+    return;
+  }
+ }
+}
+
+/*! Releases a spin lock. */
+inline static void
+release_lock(register volatile unsigned int * const spin_lock
+              /*!< Points to the spin lock. */)
+{
+ register unsigned int spin_lock_value, new_spin_lock_value;
+
+ new_spin_lock_value = *spin_lock;
+
+ while (1)
+ {
+  spin_lock_value = new_spin_lock_value;
+
+  if (0x80000000 == spin_lock_value)
+   new_spin_lock_value = 0;
+  else
+   new_spin_lock_value = spin_lock_value-1;
+
+  while (0 != (new_spin_lock_value&0x80000000))
+   kprints("Kernel panic! Corrupt lock state.\n");
+
+  new_spin_lock_value = lock_cmpxchg(spin_lock,
+                                     spin_lock_value,
+                                     new_spin_lock_value);
+  if (new_spin_lock_value == spin_lock_value)
+   return;
+ }
+}
+
+/*! Wrapper for reading the cr2 register.
+  \returns The value in the cr2 register. */
+inline static unsigned long
+read_cr2(void)
+{
+ register unsigned long return_value;
+ __asm volatile("movq %%cr2,%0" : "=r" (return_value));
  return return_value;
 }
 

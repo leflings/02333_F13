@@ -15,17 +15,53 @@
 
 /* Variables */
 
+unsigned long
+APIC_id_bit_field;
+
+unsigned long
+pic_interrupt_bitfield;
+
+volatile unsigned int
+screen_lock=0;
+
+volatile unsigned int
+page_frame_table_lock=0;
+
 union thread
 thread_table[MAX_NUMBER_OF_THREADS];
+
+volatile unsigned int
+thread_table_lock=0;
 
 struct process
 process_table[MAX_NUMBER_OF_PROCESSES];
 
+volatile unsigned int
+process_table_lock=0;
+
 struct thread_queue
 ready_queue;
 
+volatile unsigned int
+ready_queue_lock=0;
+
+struct CPU_private
+CPU_private_table[MAX_NUMBER_OF_CPUS];
+
+unsigned int
+number_of_available_CPUs=0;
+
+volatile unsigned int
+number_of_initialized_CPUs=0;
+
+volatile unsigned int
+CPU_private_table_lock=0;
+
+unsigned int
+pic_interrupt_map[12];
+
 struct executable
-executable_table[MAX_NUMBER_OF_PROCESSES];
+executable_table[MAX_NUMBER_OF_EXECUTABLES];
 
 int
 executable_table_size = 0;
@@ -35,13 +71,26 @@ executable_table_size = 0;
 const struct executable_image* ELF_images_start;
 
 const char* ELF_images_end;
+
 /* Initialize the timer queue to be empty. */
 int
 timer_queue_head=-1;
 
+volatile unsigned int
+timer_queue_lock=0;
+
 /* Initialize the system time to be 0. */
-long
+volatile long
 system_time=0;
+
+void*
+AP_boot_stack;
+
+unsigned int
+GS_base;
+
+unsigned int
+TSS_selector;
 
 /*! Size of the keyboard scan code buffer. */
 #define KEYBOARD_BUFFER_SIZE 16
@@ -60,11 +109,21 @@ static int
 keyboard_scancode_high_marker = 0;
 
 /*! List of threads blocked waiting for scan codes. */
-struct thread_queue keyboard_blocked_threads;
+struct thread_queue
+keyboard_blocked_threads;
+
+volatile unsigned int
+keyboard_scancode_buffer_lock=0;
+/*!< Spin lock used to ensure mutual exclusion to the keyboard scan code
+     buffer. */
+
+/*! Points to the first byte after the area where the kernel stacks are
+    located.  */
+extern char
+kernel_stack_base[1];
 
 /* Function definitions */
 
-/*! Helper struct that is used to return values from prepare_process. */
 struct prepare_process_return_value
 prepare_process(const struct Elf64_Ehdr* elf_image,
                 const unsigned int       process,
@@ -114,6 +173,8 @@ prepare_process(const struct Elf64_Ehdr* elf_image,
   /* Build the pdp table. */
   dst = (unsigned long*) (address_to_memory_block+4096);
   *dst = (address_to_memory_block+2*4096) | 7;
+  /* Copy the APIC mapping. */
+  *(dst+3) = *((unsigned long*) (kernel_page_table_root + 4096 + 24));
 
   /* Build the pd table. */
   dst = (unsigned long*) (address_to_memory_block+2*4096);
@@ -211,6 +272,9 @@ cleanup_process(const int process)
 {
  register unsigned int i;
 
+ /* Obtain exclusive access to the page_frame_table. */
+ grab_lock_rw(&page_frame_table_lock);
+
  for(i=0; i<memory_pages; i++)
  {
   if (page_frame_table[i].owner == process)
@@ -220,13 +284,72 @@ cleanup_process(const int process)
   }
  }
 
- cpu_private_data.page_table_root = kernel_page_table_root;
+ CPU_private_table[get_processor_index()].page_table_root =
+  kernel_page_table_root;
+ release_lock(&page_frame_table_lock);
+}
+
+void
+send_IPI(register unsigned char const destination_processor_index,
+         register unsigned int  const vector)
+{
+ /* Set destination. */
+ *(LOCAL_APIC_BASE_ADDRESS + 0x310/4) =
+   CPU_private_table[destination_processor_index].local_apic_id<<(56-32);
+ /* And send interrupts. */
+ *(LOCAL_APIC_BASE_ADDRESS + 0x300/4) = vector & 0xff;
+}
+
+/*! Initialize the local APIC for the current CPU. */
+void
+initialize_APIC(void)
+{
+ register unsigned int max_lvt_entries =
+  (*(LOCAL_APIC_BASE_ADDRESS + 0x30/sizeof(unsigned int)) >> 16) & 0xff;
+
+ while (5 != max_lvt_entries)
+ {
+  kprints("PANIC: APIC configuration not supported.\n");
+ }
+
+ /* Make sure the APIC is enabled. */
+ *(LOCAL_APIC_BASE_ADDRESS + 0xf0/sizeof(unsigned int)) |= 0x100;
+
+ /* Set task priority. */
+ *(LOCAL_APIC_BASE_ADDRESS + 0x80/sizeof(unsigned int)) = 0;
+
+ /* Mask all local sources. */
+ *(LOCAL_APIC_BASE_ADDRESS + 0x320/sizeof(unsigned int)) |= 0x10000;
+ *(LOCAL_APIC_BASE_ADDRESS + 0x330/sizeof(unsigned int)) |= 0x10000;
+ *(LOCAL_APIC_BASE_ADDRESS + 0x340/sizeof(unsigned int)) |= 0x10000;
+ *(LOCAL_APIC_BASE_ADDRESS + 0x350/sizeof(unsigned int)) |= 0x10000;
+ *(LOCAL_APIC_BASE_ADDRESS + 0x360/sizeof(unsigned int)) |= 0x10000;
+ *(LOCAL_APIC_BASE_ADDRESS + 0x370/sizeof(unsigned int)) |= 0x10000;
+
+ number_of_initialized_CPUs++;
+}
+
+static unsigned int
+read_io_apic_register(register unsigned int const register_number)
+{
+ *IOAPIC_BASE_ADDRESS = register_number;
+
+ return(*(IOAPIC_BASE_ADDRESS + 16/sizeof(unsigned int)));
+}
+
+static void
+write_io_apic_register(register unsigned int const register_number,
+                       register unsigned int const value)
+{
+ *IOAPIC_BASE_ADDRESS = register_number;
+
+ *(IOAPIC_BASE_ADDRESS + 16/sizeof(unsigned int)) = value;
 }
 
 void
 initialize(void)
 {
- register int i;
+ register int i,j;
 
  /* Loop over all threads in the thread table and reset the owner. */
  for(i=0; i<MAX_NUMBER_OF_THREADS; i++)
@@ -244,6 +367,27 @@ initialize(void)
                                     thread. */
  }
 
+ /* Initialize the CPU_private_table. */
+
+ for(i=0; i<MAX_NUMBER_OF_CPUS; i++)
+ {
+  CPU_private_table[i].stack =
+   (unsigned long) &kernel_stack_base[-i*2*4096];
+  CPU_private_table[i].page_table_root = kernel_page_table_root;
+  CPU_private_table[i].thread_index = -1;
+  CPU_private_table[i].CPU_index = i;
+  CPU_private_table[i].ticks_left_of_time_slice = 1;
+ }
+
+ /* Set up the PIC interrupt map. */
+ for(i=0; i<12; i++)
+  pic_interrupt_map[i] = (pic_interrupt_bitfield >> (i*5)) & 31;
+
+ /* Set up APIC ids by decoding the bitfield generated by the boot code. */
+ j=0;
+ for(i=0; i<64; i++)
+  if (APIC_id_bit_field & (1 << i))
+   CPU_private_table[j++].local_apic_id=i;
  /* Initialize the ready queue. */
  thread_queue_init(&ready_queue);
 
@@ -259,29 +403,29 @@ initialize(void)
  {
   /* Calculate the number of frames occupied by the kernel and executable 
      images. */
-  const register int k=first_available_memory_byte/(4*1024);
+  const register int k = first_available_memory_byte/(4*1024);
 
   /* Mark the pages that are used by the kernel or executable images as taken
     by the kernel (-2 in the owner field). */
   for(i=0; i<k; i++)
   {
-   page_frame_table[i].owner=-2;
-   page_frame_table[i].free_is_allowed=0;
+   page_frame_table[i].owner = -2;
+   page_frame_table[i].free_is_allowed = 0;
   }
 
   /* Loop over all the rest page frames and mark them as free (-1 in owner
      field). */
   for(i=k; i<memory_pages; i++)
   {
-   page_frame_table[i].owner=-1;
-   page_frame_table[i].free_is_allowed=1;
+   page_frame_table[i].owner = -1;
+   page_frame_table[i].free_is_allowed = 1;
   }
 
   /* Mark any unusable pages as taken by the kernel. */
   for(i=memory_pages; i<MAX_NUMBER_OF_FRAMES; i++)
   {
-   page_frame_table[i].owner=-2;
-   page_frame_table[i].free_is_allowed=0;
+   page_frame_table[i].owner = -2;
+   page_frame_table[i].free_is_allowed = 0;
   }
  }
 
@@ -426,7 +570,7 @@ initialize(void)
 
    kprints("Found an executable image.\n");
 
-   if (executable_table_size >= MAX_NUMBER_OF_PROCESSES)
+   if (executable_table_size >= MAX_NUMBER_OF_EXECUTABLES)
    {
     while (1)
     {
@@ -445,6 +589,17 @@ initialize(void)
   while (1)
   {
    kprints("Kernel panic! Can not boot.\n");
+  }
+ }
+
+ /* Copy the application processor bootstrap code into place. */
+ {
+  register char*       dst = (char*) 0x10000;
+  register const char* src = start_application_processor;
+
+  for(; src<start_application_processor_end;)
+  {
+   *dst++=*src++;
   }
  }
 
@@ -480,6 +635,110 @@ initialize(void)
                              program_header[i].p_memsz,
                              (program_header[i].p_flags&7) | PF_KERNEL);
    }
+  }
+
+  /* Set the protection for the bootstrap code. */
+  update_memory_protection(kernel_page_table_root,
+                           0x10000,
+                           4096,
+                           PF_X | PF_R | PF_KERNEL);
+
+  /* Reload the kernel page table. */
+  __asm volatile("movq %0,%%cr3" : :
+                 "r" (kernel_page_table_root));
+ }
+
+ /* Now we set up the 8259A interrupt controller to not send interrupts. */
+ outb(0x20, 0x11);
+ outb(0xA0, 0x11);
+
+ outb(0x21, 0x20);
+ outb(0xA1, 0x28);
+
+ outb(0x21, 1<<2);
+ outb(0xA1, 2);
+
+ outb(0x21, 1);
+ outb(0xA1, 1);
+
+ outb(0x21, 0xff);
+ outb(0xA1, 0xff);
+
+ /* Set up the timer hardware to generate interrupts 200 times a second. */
+ outb(0x43, 0x36);
+ outb(0x40, 78);
+ outb(0x40, 23);
+
+ /* Initialize IO APIC disabling all interrupts. */
+ {
+  register int i;
+  for(i=0; i<24; i++)
+  {
+   register unsigned int const io_apic_low_bits =
+    read_io_apic_register(0x10 + 2*i);
+   write_io_apic_register(0x10 + 2*i, io_apic_low_bits | 0x10000);
+  }
+ }
+
+ /* Route NMIs and 8259 interrupts through the APIC. */
+ outb(0x22, 0x70);
+ outb(0x23, 1);
+
+ /* Bootstrap all processors. */
+ {
+  register int processor_index;
+
+  initialize_APIC();
+  number_of_initialized_CPUs = 1;
+
+  kprints("BSP initialized.\n");
+
+  for(processor_index = 1;
+      processor_index<number_of_available_CPUs;
+      processor_index++)
+  {
+   /* Set up information to be sent to the application processor boot strap. */
+
+   TSS_selector = 40 + processor_index*16;
+   GS_base =
+    (unsigned int) (((unsigned long)(&CPU_private_table[processor_index])) &
+                    0xffffffff);
+   AP_boot_stack = &kernel_stack_base[-processor_index*2*4096];
+
+   kprints("Attempting to start AP");
+
+   /* Application processor. Send IPI to wake it up. */
+
+   /*! \todo The SIPI procedure is not bullet proof. It works with bochs but
+      to be fully working on all CPU types and revisions there should be a
+      timeout and a second try if the first does not work. */
+
+   kprinthex(CPU_private_table[processor_index].local_apic_id);
+   kprints(".\n\0");
+
+   /* Send INIT command. */
+   *(LOCAL_APIC_BASE_ADDRESS + 0x310/4) =
+    CPU_private_table[processor_index].local_apic_id<<(56-32);
+   *(LOCAL_APIC_BASE_ADDRESS + 0x300/4) = 0x510;
+
+   /* Pause for a moment, using busy loop and CPU0's APIC timer. */
+   {
+    /* Set divider to 2. */
+    *(LOCAL_APIC_BASE_ADDRESS + 0x3e0/4) = 0x00;
+
+    /* Set initial count */
+    *(LOCAL_APIC_BASE_ADDRESS + 0x380/4) = 1000000;
+
+    while (*(LOCAL_APIC_BASE_ADDRESS + 0x390/4) > 0);
+   }
+
+   /* Send SIPI. */
+   *(LOCAL_APIC_BASE_ADDRESS + 0x300/4) = 0x610;
+
+   /* Spin until the application processor is woken up. */
+   while((processor_index+1) != number_of_initialized_CPUs);
+
+   kprints("AP initialized.\n\0");
   }
  }
 
@@ -519,7 +778,7 @@ initialize(void)
   /* Set the page table address. */
   process_table[0].page_table_root =
    prepare_process_ret_val.page_table_address;
-  cpu_private_data.page_table_root =
+  CPU_private_table[0].page_table_root =
    prepare_process_ret_val.page_table_address;
 
   /* We need a thread. We just take the first one as no threads are running or
@@ -534,13 +793,8 @@ initialize(void)
    prepare_process_ret_val.first_instruction_address;
 
   /* Finally we set the current thread. */
-  cpu_private_data.thread_index = 0;
+  CPU_private_table[0].thread_index=0;
  }
-
- /* Set up the timer hardware to generate interrupts 200 times a second. */
- outb(0x43, 0x36);
- outb(0x40, 78);
- outb(0x40, 23);
 
  /* Set up the keyboard controller. */
  
@@ -592,27 +846,35 @@ initialize(void)
   }
  } 
 
- /* Now we set up the interrupt controller to allow timer, keyboard and ne2k
-    interrupts. */
- outb(0x20, 0x11);
- outb(0xA0, 0x11);
-
- outb(0x21, 0x20);
- outb(0xA1, 0x28);
-
- outb(0x21, 1<<2);
- outb(0xA1, 2);
-
- outb(0x21, 1);
- outb(0xA1, 1);
-
- outb(0x21, 0xf4);
- outb(0xA1, 0xff);
-
  clear_screen();
 
  kprints("\n\n\nThe kernel has booted!\n\n\n");
- /* Now go back to assembly language code and let the process run. */
+
+ /* Enable timer, keyboard and ne2k interrupts. */
+
+ {
+  register unsigned int timer_gsi = pic_interrupt_map[0];
+  /* Send timer interrupts to all cpus. */
+  write_io_apic_register(0x11 + timer_gsi*2, 0xff000000);
+  write_io_apic_register(0x10 + timer_gsi*2, 0x00000020);
+ }
+
+ {
+  register unsigned int keyboard_gsi = pic_interrupt_map[1];
+  /* Send keyboard interrupts to the BSP. */
+  write_io_apic_register(0x11 + keyboard_gsi*2,
+   CPU_private_table[0].local_apic_id << 24);
+  write_io_apic_register(0x10 + keyboard_gsi*2, 0x00000021);
+ }
+
+ {
+  register unsigned int ne2k_gsi = pic_interrupt_map[3];
+  /* Send keyboard interrupts to the BSP. */
+  write_io_apic_register(0x11 + ne2k_gsi*2,
+   CPU_private_table[0].local_apic_id << 24);
+  write_io_apic_register(0x10 + ne2k_gsi*2, 0x00000023);
+ }
+ /* Now go back to the assembly language code and let the process run. */
 }
 
 int
@@ -637,10 +899,12 @@ extern void
 system_call_handler(void)
 {
  register int schedule = 0;
+ /*!< System calls may set this variable to 1. The variable is used as
+      input to the scheduler to indicate that scheduling is not necessary. */
 
  /* Reset the interrupt flag indicating that the context of the caller was
     saved by the system call routine. */
- thread_table[cpu_private_data.thread_index].data.registers.from_interrupt=0;
+ thread_table[get_current_thread()].data.registers.from_interrupt=0;
 
  switch(SYSCALL_ARGUMENTS.rax)
  {
@@ -660,7 +924,7 @@ system_call_handler(void)
    }
 
    /* Get the current thread. */
-   tmp_thread_index=cpu_private_data.thread_index;
+   tmp_thread_index=get_current_thread();
 
    /* Force a re-schedule. */
    schedule=1;
@@ -675,6 +939,9 @@ system_call_handler(void)
       makes the code to test if threads should be made ready very quick. It
       also, unfortunately, makes the code that insert code into the queue
       rather complex. */
+
+   /* Grab the locks we need. */
+   grab_lock_rw(&timer_queue_lock);
 
    /* If the queue is empty put the thread as only entry. */
    if (-1 == timer_queue_head)
@@ -732,13 +999,21 @@ system_call_handler(void)
      }
     }
    }
+
+   /* We are done accessing the timer queue so we can release the lock. */
+   release_lock(&timer_queue_lock);
    break;
   }
 
   case SYSCALL_TIME:
   {
    /* Returns the current system time to the program. */
+
+   /* Grabs the lock with read permissions so that the time will not change
+      when reading it. */
+   grab_lock_r(&timer_queue_lock);
    SYSCALL_ARGUMENTS.rax=system_time;
+   release_lock(&timer_queue_lock);
    break;
   }
 
@@ -761,15 +1036,15 @@ system_call_handler(void)
 
    SYSCALL_ARGUMENTS.rax=kalloc(
            SYSCALL_ARGUMENTS.rdi,
-           thread_table[cpu_private_data.thread_index].data.owner,
+           thread_table[get_current_thread()].data.owner,
            SYSCALL_ARGUMENTS.rsi & (ALLOCATE_FLAG_READONLY|ALLOCATE_FLAG_EX));
    break;
   }
 
   case SYSCALL_ALLOCATEPORT:
   {
-   int port=allocate_port(SYSCALL_ARGUMENTS.rdi, 
-                          thread_table[cpu_private_data.thread_index].
+   int port=allocate_port(SYSCALL_ARGUMENTS.rdi,
+                          thread_table[get_current_thread()].
                            data.owner);
 
    /* Return an error if a port cannot be allocated. */
@@ -810,13 +1085,17 @@ system_call_handler(void)
   
   case SYSCALL_GETPID:
   {
-   SYSCALL_ARGUMENTS.rax = 
-    thread_table[cpu_private_data.thread_index].data.owner;
+   grab_lock_r(&thread_table_lock);
+   SYSCALL_ARGUMENTS.rax = thread_table[get_current_thread()].data.owner;
+   release_lock(&thread_table_lock);
   break;
   }
 
   case SYSCALL_GETSCANCODE:
   {
+   /* Grab spin lock. */
+   grab_lock_rw(&keyboard_scancode_buffer_lock);
+
    /* Check if there is data in the scan code buffer. */
    if (keyboard_scancode_high_marker!=keyboard_scancode_low_marker)
    {
@@ -831,12 +1110,14 @@ system_call_handler(void)
 
     /* Set the default return value to be an error. */
     SYSCALL_ARGUMENTS.rax=ERROR;
-    /* Take the current thread out of the ready queue. */
-    current_thread_index=cpu_private_data.thread_index;
+    current_thread_index=get_current_thread();
     /* Tell the scheduler that it will have to reschedule. */
     schedule=1;
     thread_queue_enqueue(&keyboard_blocked_threads, current_thread_index);
    }
+
+   /* Release spin lock. */
+   release_lock(&keyboard_scancode_buffer_lock);
    break;
   }
 
@@ -857,49 +1138,59 @@ timer_interrupt_handler(void)
  /*!< Interrupt hander code may set this variable to 0. The variable is
       used as input to the scheduler to indicate if the interrupt code has
       updated scheduling data structures. */
-
- /* Increment system time. */
- system_time++;
-
- /* Check if there are any thread that we should make ready.
-    First check if there are any threads at all in the timer
-    queue. */
- if (-1 != timer_queue_head)
+ /* Only the BSP should maintain the timer queue and system time. */
+ if (0 == get_processor_index())
  {
-  /* Then decrement the list_data in the head. */
-  thread_table[timer_queue_head].data.list_data-=1;
+  /* Grab the locks so that we can access the data structures freely. */
+  grab_lock_rw(&timer_queue_lock);
 
-  /* Then remove all elements including with a list_data equal to zero
-     and insert them into the ready queue. These are the threads that
-     should be woken up. */
-  while((-1 != timer_queue_head) &&
-        /* We remove all entries less than or equal to 0. Equality should be
-           enough but checking with less than or equal may hide the symptoms
-           of some bugs and make the system more stable. */
-        (thread_table[timer_queue_head].data.list_data<=0))
+  /* Increment system time. */
+  system_time++;
+
+  /* Check if there are any thread that we should make ready.
+     First check if there are any threads at all in the timer
+     queue. */
+  if (-1 != timer_queue_head)
   {
-   register int tmp_thread_index=timer_queue_head;
-   /* Remove the head element.*/
-   timer_queue_head=thread_table[tmp_thread_index].data.next;
+   /* Then decrement the list_data in the head. */
+   thread_table[timer_queue_head].data.list_data-=1;
 
-   /* Let the woken thread run if the CPU is not running any thread. */
-   if (-1 == cpu_private_data.thread_index)
+   /* Then remove all elements including with a list_data equal to zero
+      and insert them into the ready queue. These are the threads that
+      should be woken up. */
+   while((-1 != timer_queue_head) &&
+         /* We remove all entries less than or equal to 0. Equality should be
+            enough but checking with less than or equal may hide the symptoms
+            of some bugs and make the system more stable. */
+         (thread_table[timer_queue_head].data.list_data<=0))
    {
-    cpu_private_data.thread_index = tmp_thread_index;
-    thread_changed=1;
-    cpu_private_data.page_table_root = 
-     process_table[thread_table[tmp_thread_index].data.owner].
-      page_table_root;
-   }
-   else
-   {
-    /* Or insert it into the ready queue. */
-    thread_queue_enqueue(&ready_queue, tmp_thread_index);
+    register int tmp_thread_index=timer_queue_head;
+    /* Remove the head element.*/
+    timer_queue_head=thread_table[tmp_thread_index].data.next;
+
+    /* Let the woken thread run if the CPU is not running any thread. */
+    if (-1 == get_current_thread())
+    {
+     CPU_private_table[get_processor_index()].thread_index = tmp_thread_index;
+     thread_changed=1;
+     CPU_private_table[get_processor_index()].page_table_root =
+      process_table[thread_table[tmp_thread_index].data.owner].
+       page_table_root;
+    }
+    else
+    {
+     /* Or insert it into the ready queue. */
+     grab_lock_rw(&ready_queue_lock);
+     thread_queue_enqueue(&ready_queue, tmp_thread_index);
+     release_lock(&ready_queue_lock);
+    }
    }
   }
+  /* Done updating the structures. */
+  release_lock(&timer_queue_lock);
  }
-
  scheduler_called_from_timer_interrupt_handler(thread_changed);
+
 }
 
 /*! Keyboard interrupt handler. */
@@ -911,6 +1202,9 @@ keyboard_interrupt_handler(void)
  if ((status_byte&1)==1)
  {
   register unsigned char data=inb(0x60);
+
+  /* Grab the buffer lock. */
+  grab_lock_rw(&keyboard_scancode_buffer_lock);
 
   /* Is a thread waiting for data? */
   if (thread_queue_is_empty(&keyboard_blocked_threads))
@@ -933,19 +1227,25 @@ keyboard_interrupt_handler(void)
     data;
 
    /* Let the woken thread run if the CPU is not running any thread. */
-   if (-1 == cpu_private_data.thread_index)
+   if (-1 == get_current_thread())
    {
-    cpu_private_data.thread_index = blocked_thread_index;
+    CPU_private_table[get_processor_index()].thread_index = blocked_thread_index;
 
-    cpu_private_data.page_table_root = 
+    CPU_private_table[get_processor_index()].page_table_root =
      process_table[thread_table[blocked_thread_index].data.owner].
       page_table_root;
    }
    else
    {
+    /* Or insert it into the ready queue. */
+    grab_lock_rw(&ready_queue_lock);
     thread_queue_enqueue(&ready_queue, blocked_thread_index);
+    release_lock(&ready_queue_lock);
    }
   }
+
+  /* Release buffer lock. */
+  release_lock(&keyboard_scancode_buffer_lock);
  }
 }
 
@@ -973,10 +1273,17 @@ interrupt_dispatcher(const unsigned long interrupt_number)
    break;
   }
 
+  case 255:
   case 39:
   {
    /* Spurious interrupt occurred. This could happen if we spend too long 
       time with interrupts disabled. */
+   break;
+  }
+
+  case 240:
+  {
+   /* Dummy IPI handler. */
    break;
   }
 
@@ -994,13 +1301,10 @@ interrupt_dispatcher(const unsigned long interrupt_number)
  }
 
  /* Acknowledge interrupt so that new interrupts can be sent to the CPU. */
- if (interrupt_number < 48)
+ if (interrupt_number >= 32)
  {
-  if (interrupt_number >= 40)
-  {
-   outb(0xa0, 0x20);
-  }
-  outb(0x20, 0x20);
+  /* Do an EOI procedure on the local APIC. */
+  *(LOCAL_APIC_BASE_ADDRESS + 0xb0/sizeof(unsigned int)) = 0;
  }
 }
 

@@ -21,6 +21,11 @@ start_of_64bit_code:
  mov    %ecx,%fs
  mov    %ecx,%gs
 
+ # Carry some 64-bit values over from the boot code to the 64-bit kernel
+ movq   APIC_id_bit_field,%r14
+ movq   pic_interrupt_bitfield,%r13
+ movl   number_of_available_CPUs,%r12d
+	
  # Jump to the main kernel's entry point.
  mov    $main_kernel,%rax
  mov    24(%rax),%rax

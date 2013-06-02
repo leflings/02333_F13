@@ -18,7 +18,7 @@ SECTIONS
   .text (0x00100000 + SIZEOF_HEADERS) :
    AT (0x00100000 + SIZEOF_HEADERS)
   {
-    * (.text) /* All text sections. */
+    * (.text*) /* All text sections. */
    . = ALIGN(4096);
   } : text
 
@@ -26,6 +26,8 @@ SECTIONS
    AT (LOADADDR(.text) + SIZEOF (.text))
   {
    objects/kernel/boot32.o (.data) 
+   objects/kernel/acpi.o (.rodata*) 
+   objects/kernel/acpi.o (.data*) 
    . = ALIGN(4096);
    main_kernel = .;
    objects/kernel/kernel64.o (.data)
@@ -35,9 +37,13 @@ SECTIONS
   .bss (ADDR(.data) + SIZEOF (.data)) :
    AT (LOADADDR(.data) + SIZEOF (.data))
   {
-   * (.bss)  /* Any remaining bss sections. */
+   start_of_bss = ABSOLUTE(.); 
+   * (.bss*)  /* Any remaining bss sections. */
+   . = ALIGN(8);
   }
  
+  end_of_bss = ABSOLUTE(.); 
+
   /* Various debug sections. */
   .stab 0 : 
   { 
