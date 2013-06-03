@@ -8,4 +8,6 @@
 void 
 main(int argc, char* argv[])
 {
+  prints("Running executable 1\n");
+  terminate();
 }

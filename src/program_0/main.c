@@ -9,4 +9,9 @@
 void
 main(int argc, char* argv[])
 {
+  prints("Running exec 0\n");
+  if(0 != createprocess(1)) {
+    prints("Hej");
+  }
+  terminate();
 }
