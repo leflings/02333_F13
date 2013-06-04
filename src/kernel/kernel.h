@@ -17,6 +17,13 @@
 /*!< Macro used in the system call switch to access the arguments to the 
      system call. */
 
+
+
+#define DEBUG_ON 1
+/*!< Enable debugging printouts in kernel. */
+
+
+
 #define KERNEL_VERSION        (0x0000000100000000)
 /*!< Kernel version number. */
 

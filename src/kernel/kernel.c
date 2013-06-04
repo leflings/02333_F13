@@ -849,6 +849,8 @@ initialize(void)
  clear_screen();
 
  kprints("\n\n\nThe kernel has booted!\n\n\n");
+ kprinthex(number_of_initialized_CPUs);
+ kprints("\n\n");
 
  /* Enable timer, keyboard and ne2k interrupts. */
 

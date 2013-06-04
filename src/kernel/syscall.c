@@ -78,8 +78,8 @@ system_call_implementation(void)
 
       grab_lock_rw(&thread_table_lock);
 
-      process_table[process_number].parent
-      = thread_table[get_current_thread()].data.owner;
+      process_table[process_number].parent = thread_table[get_current_thread()].data.owner;
+      process_table[process_number].page_table_root = prepare_process_ret_val.page_table_address;
 
       /* Allocate default port 0 */
       // FIXME: Implement sync
@@ -127,10 +127,7 @@ system_call_implementation(void)
     int parent_process = process_table[owner_process].parent;
     int tmp_thread;
 
-    /*Decrement thread count */
-    process_table[owner_process].threads -= 1;
-
-    if(process_table[owner_process].threads < 1)
+    if(--process_table[owner_process].threads < 1)
     {
       thread_table[get_current_thread()].data.owner = -1;
       cleanup_process(owner_process);
