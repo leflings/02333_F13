@@ -11,14 +11,13 @@ void
 main(int argc, char* argv[])
 {
   signed long i = 0;
-  prints("Exec 2 start: ");
-  printhex(time());
-  prints("\n");
-  while(++i);
-  pause(15);
-  prints("Exec 2 end:   ");
-  printhex(time());
-  prints("\n");
+//  prints("Exec 2 start: ");
+//  printhex(time());
+//  prints("\n");
+  while(1);
+//  prints("Exec 2 end:   ");
+//  printhex(time());
+//  prints("\n");
   terminate();
 
 

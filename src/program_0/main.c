@@ -10,15 +10,15 @@ void
 main(int argc, char* argv[])
 {
   int i = 0;
-  prints("Running exec 0\n");
+//  prints("Running exec 0\n");
   if(0 != createprocess(1)) {
     prints("Hej");
   }
 //  if(0 != createprocess(1)) {
 //    prints("Hej");
 //  }
-  prints("Exec 0 finished\n");
-  while(i);
+//  prints("Exec 0 finished\n");
+  while(1);
 //  if (0 != createprocess(1))
 //   {
 //    prints("createprocess of program 1 failed.\n");

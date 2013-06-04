@@ -9,7 +9,7 @@ void
 main(int argc, char* argv[])
 {
   int i = 0;
-  prints("Exec 1 start\n");
+//  prints("Exec 1 start\n");
 
   if(0 != createprocess(2)) {
     prints("Failure 1\n");
@@ -30,7 +30,7 @@ main(int argc, char* argv[])
     prints("Failure 6\n");
   }
 
-  prints("Exec 1 end\n");
+//  prints("Exec 1 end\n");
 
 //  unsigned int reps = 0;
 //  while(1){
