@@ -9,6 +9,8 @@
 
 unsigned int any_cpus_dormant();
 
+int i;
+
 void
 scheduler_called_from_system_call_handler(const register int schedule)
 {
@@ -23,7 +25,7 @@ scheduler_called_from_system_call_handler(const register int schedule)
       release_lock(&ready_queue_lock);
 
 
-      grab_lock_rw(&CPU_private_table_lock);
+//      grab_lock_rw(&CPU_private_table_lock);
       CPU_private_table[get_processor_index()].thread_index = next_thread;
 
       if(next_thread != -1)
@@ -32,7 +34,7 @@ scheduler_called_from_system_call_handler(const register int schedule)
         CPU_private_table[get_processor_index()].page_table_root = process_table[thread_table[next_thread].data.owner].page_table_root;
       }
 
-      release_lock(&CPU_private_table_lock);
+//      release_lock(&CPU_private_table_lock);
 
       /* in this case we must reschedule */
 #if DEBUG_ON
@@ -58,9 +60,7 @@ scheduler_called_from_timer_interrupt_handler(const register int thread_changed)
   if(thread_changed)
    {
      /* We must reset the time slice */
-//     grab_lock_rw(&CPU_private_table_lock);
      CPU_private_table[get_processor_index()].ticks_left_of_time_slice = MAX_TICKS;
-//     release_lock(&CPU_private_table_lock);
 
 #if DEBUG_ON
         kprints("Forced thread scheduled on CPU: ");
@@ -72,30 +72,6 @@ scheduler_called_from_timer_interrupt_handler(const register int thread_changed)
    }
    else if(get_current_thread() != -1)
    {
-     /** DORMANT SCHEDULE LOGIC */
-//     grab_lock_rw(&CPU_private_table_lock);
-//     if(get_current_thread() == -1)
-//     {
-//       grab_lock_rw(&ready_queue_lock);
-//       if(!thread_queue_is_empty(&ready_queue))
-//       {
-//         int next_thread;
-//         next_thread = thread_queue_dequeue(&ready_queue);
-//         CPU_private_table[get_processor_index()].thread_index = next_thread;
-//         CPU_private_table[get_processor_index()].ticks_left_of_time_slice = MAX_TICKS;
-//         CPU_private_table[get_processor_index()].page_table_root = process_table[thread_table[next_thread].data.owner].page_table_root;
-//
-//#if DEBUG_ON
-//          kprints("Dormant schedule on CPU: ");
-//          kprinthex(get_processor_index());
-//          kprints(" -> thread: ");
-//          kprinthex(CPU_private_table[get_processor_index()].thread_index);
-//          kprints("\n");
-//#endif
-//       }
-//       release_lock(&ready_queue_lock);
-//     }
-
      grab_lock_rw(&ready_queue_lock);
      /* decrement time slice and check it it's expired */
      if(--CPU_private_table[get_processor_index()].ticks_left_of_time_slice < 1)
@@ -126,13 +102,9 @@ scheduler_called_from_timer_interrupt_handler(const register int thread_changed)
      }
 
      if(!thread_queue_is_empty(&ready_queue)) {
-       int i;
        for(i = 0; i < number_of_initialized_CPUs; i++) {
          if(CPU_private_table[i].thread_index == -1) {
            send_IPI(i, 240);
-#if DEBUG_ON
-           kprints("sent interrupt\n");
-#endif
            break;
          }
        }
@@ -143,13 +115,13 @@ scheduler_called_from_timer_interrupt_handler(const register int thread_changed)
    }
 }
 
-unsigned int any_cpus_dormant() {
-  int i;
-  for(i = 0; i < number_of_initialized_CPUs; i++)
-  {
-    if(CPU_private_table[i].thread_index == -1) {
-      return 1;
-    }
-  }
-  return 0;
-}
+//unsigned int any_cpus_dormant() {
+//  int i;
+//  for(i = 0; i < number_of_initialized_CPUs; i++)
+//  {
+//    if(CPU_private_table[i].thread_index == -1) {
+//      return 1;
+//    }
+//  }
+//  return 0;
+//}

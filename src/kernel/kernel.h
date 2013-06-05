@@ -19,7 +19,7 @@
 
 
 
-#define DEBUG_ON 0
+#define DEBUG_ON 1
 /*!< Enable debugging printouts in kernel. */
 
 

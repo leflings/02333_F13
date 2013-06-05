@@ -20,15 +20,15 @@ main(int argc, char* argv[])
   if(0 != createprocess(2)) {
     prints("Failure 3\n");
   }
-  if(0 != createprocess(2)) {
-    prints("Failure 4\n");
-  }
-  if(0 != createprocess(2)) {
-    prints("Failure 5\n");
-  }
-  if(0 != createprocess(2)) {
-    prints("Failure 6\n");
-  }
+//  if(0 != createprocess(2)) {
+//    prints("Failure 4\n");
+//  }
+//  if(0 != createprocess(2)) {
+//    prints("Failure 5\n");
+//  }
+//  if(0 != createprocess(2)) {
+//    prints("Failure 6\n");
+//  }
 
 //  prints("Exec 1 end\n");
 

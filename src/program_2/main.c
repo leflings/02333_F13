@@ -14,6 +14,7 @@ main(int argc, char* argv[])
 //  prints("Exec 2 start: ");
 //  printhex(time());
 //  prints("\n");
+  prints("hej\n");
   while(1);
 //  prints("Exec 2 end:   ");
 //  printhex(time());

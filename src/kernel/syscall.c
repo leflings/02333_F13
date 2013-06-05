@@ -44,7 +44,6 @@ system_call_implementation(void)
     int thread_number = -1;
     struct prepare_process_return_value prepare_process_ret_val;
 
-    // FIXME: Need spinlock?
     long int executable_number = SYSCALL_ARGUMENTS.rdi;
 
     /* Search process_table for a slot */
