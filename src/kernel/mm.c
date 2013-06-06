@@ -29,15 +29,22 @@ kalloc(const register unsigned long length,
 {
   int i;
   int pfte; /* page frame table entry */
-  int return_value;
+  long return_value;
+  int first_page_frame;
   short pages_needed = ((length+4095)>>12);
 
   grab_lock_rw(&page_frame_table_lock);
+//  kprinthex(memory_size);
+//  kprints("\n");
 
-  int first_page_frame = find_contiguous_region(pages_needed);
+
+  first_page_frame = find_contiguous_region(pages_needed);
   if(first_page_frame < 0)
   {
     return_value = ERROR;
+    kprints("Failed allocating pages: ");
+    kprinthex(pages_needed);
+    kprints("\n");
   }
   else
   {
@@ -46,11 +53,14 @@ kalloc(const register unsigned long length,
       pfte = first_page_frame + i;
       page_frame_table[pfte].start = first_page_frame;
       page_frame_table[pfte].owner = process;
-      page_frame_table[pfte].free_is_allowed = !(flags & ALLOCATE_FLAG_KERNEL);
+      page_frame_table[pfte].free_is_allowed = 1; /*!(flags & ALLOCATE_FLAG_KERNEL);*/
     }
     return_value = first_page_frame*4*1024;
   }
 
+    kprints("Return value: ");
+    kprinthex(return_value);
+    kprints("\n");
   release_lock(&page_frame_table_lock);
 
   return return_value;
@@ -60,27 +70,37 @@ kalloc(const register unsigned long length,
 long
 kfree(const register unsigned long address)
 {
-//  int pf = address >> 12;
-//  int i;
-//
-//  if( /* free is allowed */
-//      page_frame_table[pf].free_is_allowed
-//      /* block is allocated  */
-//      && page_frame_table[pf].owner != -1
-//      /* block is owned by current process*/
-//      && page_frame_table[pf].owner
-//        == thread_table[cpu_private_data.thread_index].data.owner)
-//  {
-//    for(i = pf;
-//        i < MAX_NUMBER_OF_FRAMES && page_frame_table[i].start == pf;
-//        i++)
-//    {
-//      page_frame_table[i].owner = -1;
-//      page_frame_table[i].free_is_allowed = 1;
-//    }
-//    return ALL_OK;
-//  }
-//  return ERROR;
+  int pf = address >> 12;
+  int i;
+  long return_value;
+
+  grab_lock_rw(&page_frame_table_lock);
+  if( /* free is allowed */
+      page_frame_table[pf].free_is_allowed
+      /* block is allocated  */
+      && page_frame_table[pf].owner != -1
+      /* block is owned by current process*/
+      && page_frame_table[pf].owner
+        == thread_table[get_current_thread()].data.owner)
+    // TODO: Need read lock for thread table?
+  {
+    for(i = pf;
+        i < MAX_NUMBER_OF_FRAMES && page_frame_table[i].start == pf;
+        i++)
+    {
+      page_frame_table[i].owner = -1;
+      page_frame_table[i].free_is_allowed = 1;
+    }
+    return_value = ALL_OK;
+  }
+  else
+  {
+    return_value = ERROR;
+  }
+
+  release_lock(&page_frame_table_lock);
+
+  return return_value;
 }
 
 /* Change this function in task A4. */

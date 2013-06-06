@@ -1,18 +1,33 @@
 /*! \file
- *      \brief The first user program -
- *             You can add your own code here if you wish.
+ *      \brief The first user program - tests the memory allocation routines
+ *             by allocating and de-allocating random memory blocks.
  *
  */
-
 #include <scwrapper.h>
 
 void
 main(int argc, char* argv[])
 {
-  int i = 0;
-  prints("Exec 0 start\n");
+  int i;
+  for(i = 0; i < 3; i++) {
   if(0 != createprocess(1)) {
-    prints("Creation of process 1 failed\n");
+    prints("error creating process 1");
   }
-  prints("Exec 0 finished\n");
+  }
+  terminate();
+
+//  unsigned int reps = 0;
+//  while(1){
+//    unsigned long int i = 0;
+//    if(reps++ > 5)
+//    {
+//      while(i++ < 1000000000);
+//      reps = 0;
+//    }
+//    else
+//    {
+//      pause(5);
+//    }
+//    prints("Pong\n");
+//  }
 }
