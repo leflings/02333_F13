@@ -1254,7 +1254,6 @@ keyboard_interrupt_handler(void)
 extern void
 interrupt_dispatcher(const unsigned long interrupt_number)
 {
-      int next_thread;
  /* Select a handler based on interrupt source. */
  switch(interrupt_number)
  {
@@ -1286,6 +1285,7 @@ interrupt_dispatcher(const unsigned long interrupt_number)
 
   case 240:
   {
+      int next_thread;
    /* Dummy IPI handler. */
 //   scheduler_called_from_system_call_handler(1);
 
@@ -1298,17 +1298,21 @@ interrupt_dispatcher(const unsigned long interrupt_number)
       release_lock(&ready_queue_lock);
 
 
-      CPU_private_table[get_processor_index()].thread_index = next_thread;
 
       if(next_thread != -1)
       {
-        CPU_private_table[get_processor_index()].ticks_left_of_time_slice = 10;
+        CPU_private_table[get_processor_index()].thread_index = next_thread;
         CPU_private_table[get_processor_index()].page_table_root = process_table[thread_table[next_thread].data.owner].page_table_root;
+        CPU_private_table[get_processor_index()].ticks_left_of_time_slice = 10;
+#if DEBUG_ON
         kprints("Interrupted schedule on CPU: ");
         kprinthex(get_processor_index());
         kprints(" -> thread: ");
         kprinthex(next_thread);
         kprints("\n");
+#endif
+      } else {
+        kprints("Woken CPU got no thread\n");
       }
     }
 

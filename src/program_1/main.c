@@ -11,15 +11,16 @@ main(int argc, char* argv[])
   int i = 0;
 //  prints("Exec 1 start\n");
 
-  if(0 != createprocess(2)) {
-    prints("Failure 1\n");
+  for(i=0;i<8;i++) {
+//    prints("Creating -> ");
+    if(0 != createprocess(2)) {
+      prints("Failure 1\n");
+    }
+//    prints("creeated...\n");
   }
-  if(0 != createprocess(2)) {
-    prints("Failure 2\n");
-  }
-  if(0 != createprocess(2)) {
-    prints("Failure 3\n");
-  }
+//  prints("Terminating p1\n");
+  while(1);
+//  terminate();
 //  if(0 != createprocess(2)) {
 //    prints("Failure 4\n");
 //  }

@@ -14,9 +14,9 @@ int i;
 void
 scheduler_called_from_system_call_handler(const register int schedule)
 {
+  int next_thread;
   if(schedule)
     {
-      int next_thread;
 
       grab_lock_rw(&ready_queue_lock);
       /* either we'll get next thread or we'll get -1
@@ -26,13 +26,18 @@ scheduler_called_from_system_call_handler(const register int schedule)
 
 
 //      grab_lock_rw(&CPU_private_table_lock);
-      CPU_private_table[get_processor_index()].thread_index = next_thread;
+//      CPU_private_table[get_processor_index()].thread_index = next_thread;
 
       if(next_thread != -1)
       {
-        CPU_private_table[get_processor_index()].ticks_left_of_time_slice = MAX_TICKS;
+        CPU_private_table[get_processor_index()].thread_index = next_thread;
         CPU_private_table[get_processor_index()].page_table_root = process_table[thread_table[next_thread].data.owner].page_table_root;
+        CPU_private_table[get_processor_index()].ticks_left_of_time_slice = MAX_TICKS;
       }
+      else
+        {
+        CPU_private_table[get_processor_index()].thread_index = next_thread;
+        }
 
 //      release_lock(&CPU_private_table_lock);
 
@@ -45,7 +50,7 @@ scheduler_called_from_system_call_handler(const register int schedule)
         }
         kprinthex(get_processor_index());
         kprints(" -> thread: ");
-        kprinthex(CPU_private_table[get_processor_index()].thread_index);
+        kprinthex(get_current_thread());
         kprints("\n");
 #endif
 
@@ -92,7 +97,7 @@ scheduler_called_from_timer_interrupt_handler(const register int thread_changed)
         kprints("Preemptive schedule on CPU: ");
         kprinthex(get_processor_index());
         kprints(" -> thread: ");
-        kprinthex(CPU_private_table[get_processor_index()].thread_index);
+        kprinthex(get_current_thread());
         kprints("\n");
 #endif
 
@@ -102,7 +107,7 @@ scheduler_called_from_timer_interrupt_handler(const register int thread_changed)
      }
 
      if(!thread_queue_is_empty(&ready_queue)) {
-       for(i = 0; i < number_of_initialized_CPUs; i++) {
+       for(i = 0; i < 4; i++) {
          if(CPU_private_table[i].thread_index == -1) {
            send_IPI(i, 240);
            break;

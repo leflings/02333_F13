@@ -12,7 +12,7 @@ main(int argc, char* argv[])
   int i = 0;
 //  prints("Running exec 0\n");
   if(0 != createprocess(1)) {
-    prints("Hej");
+    prints("Creation of process 1 failed\n");
   }
 //  if(0 != createprocess(1)) {
 //    prints("Hej");

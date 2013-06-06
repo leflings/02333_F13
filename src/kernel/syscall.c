@@ -77,8 +77,6 @@ system_call_implementation(void)
 
       grab_lock_rw(&thread_table_lock);
 
-      process_table[process_number].parent = thread_table[get_current_thread()].data.owner;
-      process_table[process_number].page_table_root = prepare_process_ret_val.page_table_address;
 
       /* Allocate default port 0 */
       // FIXME: Implement sync
@@ -91,18 +89,16 @@ system_call_implementation(void)
       // FIXME: Add sanity check
       thread_number = allocate_thread();
 
-      if(thread_number != -1) {
-        thread_table[thread_number].data.owner = process_number;
-        thread_table[thread_number].data.registers.integer_registers.rflags = 0x200;
-        thread_table[thread_number].data.registers.integer_registers.rip =
-                        prepare_process_ret_val.first_instruction_address;
-
-        process_table[process_number].threads += 1;
-
-        SYSCALL_ARGUMENTS.rax = ALL_OK;
-      } else {
+      if(thread_number == -1) {
         kprints("Error allocating thread\n");
         SYSCALL_ARGUMENTS.rax = ERROR;
+      } else {
+        process_table[process_number].parent = thread_table[get_current_thread()].data.owner;
+        process_table[process_number].threads = 1;
+        thread_table[thread_number].data.owner = process_number;
+
+
+        SYSCALL_ARGUMENTS.rax = ALL_OK;
       }
 
       release_lock(&thread_table_lock);
@@ -110,6 +106,12 @@ system_call_implementation(void)
     }
     release_lock(&process_table_lock);
     if(thread_number != -1) {
+
+      process_table[process_number].page_table_root = prepare_process_ret_val.page_table_address;
+        thread_table[thread_number].data.registers.integer_registers.rflags = 0x200;
+        thread_table[thread_number].data.registers.integer_registers.rip =
+                        prepare_process_ret_val.first_instruction_address;
+
       grab_lock_rw(&ready_queue_lock);
       thread_queue_enqueue(&ready_queue, thread_number);
       release_lock(&ready_queue_lock);
@@ -126,9 +128,9 @@ system_call_implementation(void)
     int parent_process = process_table[owner_process].parent;
     int tmp_thread;
 
+    thread_table[get_current_thread()].data.owner = -1;
     if(--process_table[owner_process].threads < 1)
     {
-      thread_table[get_current_thread()].data.owner = -1;
       cleanup_process(owner_process);
     }
 

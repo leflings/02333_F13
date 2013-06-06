@@ -10,16 +10,28 @@
 void
 main(int argc, char* argv[])
 {
-  signed long i = 0;
+  unsigned long i, k, j;
+//  signed long i = 0;
 //  prints("Exec 2 start: ");
 //  printhex(time());
 //  prints("\n");
-  prints("hej\n");
+//  prints("process 2\n");
+  while(i < 100000000000000) {
+    for(k=0;k < 100000000000000;k++)
+      j++;
+    for(k=0;k < 100000000000000;k++)
+      j--;
+    for(k=0;k < 100000000000000;k++)
+      j++;
+    for(k=0;k < 100000000000000;k++)
+      j--;
+    i++;
+  }
   while(1);
 //  prints("Exec 2 end:   ");
 //  printhex(time());
 //  prints("\n");
-  terminate();
+//  terminate();
 
 
 //  unsigned reps = 0;
