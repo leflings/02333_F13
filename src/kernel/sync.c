@@ -27,8 +27,10 @@ allocate_port(const unsigned long id, const int new_owner)
 {
  register int i;
  register int first_available=-1;
+ int return_value;
 
  /* Loop over all ports to see if the port has already been allocated. */
+ grab_lock_rw(&port_table_lock);
  for(i=0; i<MAX_NUMBER_OF_PORTS; i++)
  {
   /* We keep track of the first available port. This way we do not
@@ -43,7 +45,7 @@ allocate_port(const unsigned long id, const int new_owner)
   if ((new_owner == port_table[i].owner) &&
       (id == port_table[i].id))
   {
-   return -1;
+   return_value = -1;
   }
  }
 
@@ -57,18 +59,21 @@ allocate_port(const unsigned long id, const int new_owner)
   port_table[first_available].receiver=-1;
   thread_queue_init(&port_table[first_available].sender_queue);
 
-  return first_available;
+  return_value = first_available;
  }
+ release_lock(&port_table_lock);
 
  /* Return -1 if we ran out of ports. */
- return -1;
+ return return_value;
 }
 
 int
 find_port(const unsigned long id, const int owner)
 {
  register int i;
+ int return_value = -1;
 
+ grab_lock_r(&port_table_lock);
  /* Loop over all ports in the table. */
  for(i=0; i<MAX_NUMBER_OF_PORTS; i++)
  {
@@ -76,11 +81,13 @@ find_port(const unsigned long id, const int owner)
   if ((owner == port_table[i].owner) &&
       (id == port_table[i].id))
   {
-   return i;
+   return_value = i;
+   break;
   }
  }
+ release_lock(&port_table_lock);
 
- return -1;
+ return return_value;
 }
 
 void

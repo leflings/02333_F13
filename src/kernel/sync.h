@@ -25,6 +25,9 @@ extern struct port
 port_table[MAX_NUMBER_OF_PORTS];
 /*!< Array holding information all ports. */
 
+extern volatile unsigned int
+port_table_lock;
+
 /*! Initializes the port table. */
 extern void
 initialize_ports(void);
