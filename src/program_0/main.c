@@ -5,29 +5,18 @@
  */
 #include <scwrapper.h>
 
-void
+
+int
 main(int argc, char* argv[])
 {
   int i;
-  for(i = 0; i < 3; i++) {
-  if(0 != createprocess(1)) {
-    prints("error creating process 1");
+  prints("Exec 0 start\n");
+  for(i=0; i<6; i++) {
+    if(0 != createprocess(1)) {
+      prints("Failed creating process 1\n");
+      break;
+    }
   }
-  }
-  terminate();
+  prints("Exec 0 end\n");
 
-//  unsigned int reps = 0;
-//  while(1){
-//    unsigned long int i = 0;
-//    if(reps++ > 5)
-//    {
-//      while(i++ < 1000000000);
-//      reps = 0;
-//    }
-//    else
-//    {
-//      pause(5);
-//    }
-//    prints("Pong\n");
-//  }
 }

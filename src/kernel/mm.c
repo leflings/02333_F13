@@ -34,9 +34,6 @@ kalloc(const register unsigned long length,
   short pages_needed = ((length+4095)>>12);
 
   grab_lock_rw(&page_frame_table_lock);
-//  kprinthex(memory_size);
-//  kprints("\n");
-
 
   first_page_frame = find_contiguous_region(pages_needed);
   if(first_page_frame < 0)
@@ -58,9 +55,6 @@ kalloc(const register unsigned long length,
     return_value = first_page_frame*4*1024;
   }
 
-    kprints("Return value: ");
-    kprinthex(return_value);
-    kprints("\n");
   release_lock(&page_frame_table_lock);
 
   return return_value;

@@ -5,17 +5,98 @@
 
 #include <scwrapper.h>
 
-void 
+/* Generates a pseduo random number */
+static inline unsigned long
+rnd(void)
+{
+ const unsigned long  seed=101;
+ static unsigned long memory;
+
+ if ((memory==0) ||
+     (memory==1) ||
+     (memory==-1))
+ {
+  memory=seed;
+ }
+
+ memory=(9973*(~memory))+((memory)%701);
+ return memory;
+}
+
+int
 main(int argc, char* argv[])
 {
-  int i = 0;
-  prints("Exec 1 start\n");
+ struct
+ {
+  unsigned long addr;
+  unsigned long size;
+ }              blocks[16];
+ register int   clock;
+ register long  total_memory_size=0;
 
-  for(i=0;i<8;i++) {
-    if(0 != createprocess(2)) {
-      prints("Failed creating process");
-      break;
-    }
+ /* Reset the information on the blocks */
+ for(clock=0; clock<16; clock++)
+ {
+  blocks[clock].addr=0;
+ }
+
+ clock=0;
+
+ while(1)
+ {
+  long          addr;
+  unsigned int  flags=rnd()&3;
+
+  /* randomize the size of a block. */
+  blocks[clock].size=(24*1024*1024-total_memory_size)*(rnd()&(256*256-1))/
+                     (256*256*8);
+
+  /* Sanity check the block size. */
+  if ((blocks[clock].size>0) &&
+      (blocks[clock].size<(1024*1024)))
+  {
+   /* Try to allocate memory. */
+   addr=alloc(blocks[clock].size,flags);
+
+   /* Check if it was successful. */
+   if (addr<=0)
+   {
+    prints("Memory block allocate failed!\n");
+    break;
+   }
+   prints("Process ");
+   printhex(getpid());
+   prints(" [alloc] for addr ");
+   printhex(addr);
+   prints("\n");
+
+   /* Keep track of how much memory we have allocated... */
+   total_memory_size+=blocks[clock].size;
+   /* and the address. */
+   blocks[clock].addr=addr;
   }
-  prints("Exec 1 end\n");
+  else
+  {
+   blocks[clock].addr=0;
+  }
+
+  clock=(clock+1)&15;
+
+  /* Try to free one block. */
+  if (0 != blocks[clock].addr)
+  {
+   if (0 != free(blocks[clock].addr))
+   {
+    prints("Memory block free failed!\n");
+    break;
+   }
+   prints("Process ");
+   printhex(getpid());
+   prints(" [free]  for addr ");
+   printhex(blocks[clock].addr);
+   prints("\n");
+//   prints("*\n");
+   total_memory_size-=blocks[clock].size;
+  }
+ }
 }
