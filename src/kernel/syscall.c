@@ -239,12 +239,12 @@ system_call_implementation(void)
         thread_table[send_thread].data.registers.integer_registers.rax = ALL_OK;
         *msg_ptr = *(struct message *) thread_table[send_thread].data.registers.integer_registers.rbx;
 
+        SYSCALL_ARGUMENTS.rdi = thread_table[send_thread].data.owner;
+        SYSCALL_ARGUMENTS.rax = ALL_OK;
+
         grab_lock_rw(&ready_queue_lock);
         thread_queue_enqueue(&ready_queue, send_thread);
         release_lock(&ready_queue_lock);
-
-        SYSCALL_ARGUMENTS.rdi = thread_table[send_thread].data.owner;
-        SYSCALL_ARGUMENTS.rax = ALL_OK;
       }
       release_lock(&port_table[port].lock);
       break;

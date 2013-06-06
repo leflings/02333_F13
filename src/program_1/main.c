@@ -92,6 +92,8 @@ main(int argc, char* argv[])
       (0 != sender))
   {
    prints(recv_failed);
+   printhex(sender);
+   printhex(type);
    debugger();
   }
 
@@ -111,6 +113,6 @@ main(int argc, char* argv[])
 
   prints(recvd_pong);
 
-  debugger();
+//  debugger();
  }
 }

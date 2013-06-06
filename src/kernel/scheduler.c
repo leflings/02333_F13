@@ -94,7 +94,7 @@ scheduler_called_from_timer_interrupt_handler(const register int thread_changed)
 
      if(!thread_queue_is_empty(&ready_queue)) {
        int i;
-       for(i = 0; i < 4; i++) {
+       for(i = 0; i < number_of_initialized_CPUs; i++) {
          if(CPU_private_table[i].thread_index == -1) {
            send_IPI(i, 240);
            break;

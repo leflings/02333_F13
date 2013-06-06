@@ -82,11 +82,12 @@ main(int argc, char* argv[])
   msg.quad_6=1;
   msg.quad_7=0;
 
+  prints("process 0: sending pong\n");
   if (ALL_OK != send(send_port, &msg))
   {
    prints("process 0: send failed\n");
    debugger();
   }
-  prints("process 0: sent pong\n");
+//  prints("process 0: sending pong\n");
  }
 }
