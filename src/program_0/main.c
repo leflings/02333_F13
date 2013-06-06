@@ -53,6 +53,18 @@ int main()
  prints(reset);
  prints("Back to normal\n");
 
+ /* Test case for across multiple rows */
+ prints("\033[16;40H");
+ prints("Test: This is a very long string, broken over two lines");
+
+ /* Test case for printhex */
+ prints("\033[14;40H");
+ prints("Printhex: ");
+ printhex(256);
+
+ prints("\033[13;40H");
+ prints("In-string\033[32m-shift\033[31m-of-co\033[0mlors");
+
  /* We're done */
  prints("\033[19;1H");
  while (1)

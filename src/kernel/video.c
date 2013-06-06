@@ -1,7 +1,13 @@
 #include "kernel.h"
 
+#define SCROLL_OFF (1)
+
 struct screen* const
 screen_pointer = (struct screen*) 0xB8000;
+
+/* Structure to imitate a cursor which can hold the row and column position
+  and the background/foreground of that position.
+ */
 struct cursor
 {
   unsigned int row;
@@ -10,7 +16,6 @@ struct cursor
   unsigned int foreground;
 } cur;
 
-struct screen_position sp[25][80];
 /*! Clears the screen. */
 void clear_screen(void)
 {
@@ -20,11 +25,12 @@ void clear_screen(void)
  {
   for(column=0; column<MAX_COLS; column++)
   {
-    screen_pointer->positions[row][column].attribute = 7;
-   screen_pointer->positions[row][column].character=' ';
+    screen_pointer->positions[row][column].attribute = 7; /* clear colors */
+    screen_pointer->positions[row][column].character=' ';
   }
  }
 
+ /* reset the cursor */
  cur.col = 0;
  cur.row = 0;
  cur.background = 0;
@@ -40,53 +46,80 @@ kprints(const char* string)
  while(1)
  {
   register const char curr = *string++;
-  int acc, tens, number;
-  int arguments[2];
-  char temp;
+  int accumulator; /* accumulator for argument scanning */
+  int tens;        /* used to keep track of number of 10^0, 10^1, 10^2 etc. */
+  int argument;    /* used to store first argument, if multiple */
+  char temp;       /* holds temp character*/
 
   if (curr)
   {
     switch (curr) {
     case '\n':
-      lineBreak();
+      line_break();
       break;
+
+    /* escape character */
     case '\033':
+      /* should be followed by [ */
       if(*string++ == '[') {
+        accumulator = tens = argument = 0;
+        /* We know escape sequence has been correctly entered */
+
+        /* Continue forward until null character or end of sequence */
         while((temp = *string++)) {
+
+          /* Clear screen (presumably) received) */
           if(temp == 'J') {
-            if(acc == 2) {
+            if(accumulator == 2) {
               clear_screen();
             }
             break;
-          } else if (temp == 'H') {
-            cur.row = number - 1;
-            cur.col = acc - 1;
+          }
+
+          /* Cursor home received */
+          else if (temp == 'H') {
+            if(argument >= 1 && argument <= 25 && accumulator >= 1 && accumulator <= 80) {
+              cur.row = argument - 1; /* adjust to zero-indexing */
+              cur.col = accumulator - 1;
+            }
             break;
-          } else if (temp == 'm') {
-            if(acc == 0) {
-              cur.background = 0; cur.foreground = 7;
+          }
+
+          /* Set attribute mode received */
+          else if (temp == 'm') {
+            if(accumulator == 0) {
+              /* Reset */
+              cur.background = 0; cur.foreground = 4|2|1;
             } else {
-              cur.foreground = code2rgb(acc % 10);
+              /* Adjust color of the cursor */
+              cur.foreground = code2rgb(accumulator % 10);
             }
             break;
-          } else if (temp == ';') {
-            number = acc;
-            acc = tens = 0;
-          } else if(temp >= '0' && temp <= '9') {
+          }
+
+          /* Argument seperator */
+          else if (temp == ';') {
+            /* Save and reset accumulator */
+            argument = accumulator;
+            accumulator = tens = 0;
+          }
+
+          /* parses numbers */
+          else if(temp >= '0' && temp <= '9') {
             if(tens++) {
-              acc *= 10;
+              accumulator *= 10;
             }
-            acc += (temp - '0');
+            accumulator += (temp - '0'); /* add decimal value of number char */
           }
         }
       }
       break;
+
     default:
       write(curr);
       break;
     }
 
-   /*outb(0xe9, curr); */
   }
   else
   {
@@ -107,58 +140,44 @@ kprinthex(const register long value)
  for(i=15; i>=0; i--)
  {
    write(hex_helper[(value>>(i*4))&15]);
-   cursorForward();
  }
 }
 
-void lineBreak() {
-  cur.row++;
-  if(cur.row > 24) {
-    scrollDown(5);
-    cur.row -= 5;
+void write(char c) {
+  screen_pointer->positions[cur.row][cur.col].character = c;
+  screen_pointer->positions[cur.row][cur.col].attribute = (cur.background << 4) + cur.foreground;
+  cursor_forward();
+}
+
+void line_break() {
+  if(++cur.row >= MAX_ROWS) {
+    scroll_down(SCROLL_OFF);
+    cur.row -= SCROLL_OFF;
   }
   cur.col = 0;
 }
 
-void cursorForward() {
-  if(cur.col++ >= 80) {
-    cur.row++;
-    cur.col = 0;
-  }
-  if(cur.row > 24) {
-    scrollDown(5);
-    cur.row -= 5;
-  }
+void cursor_forward() {
+  if(++cur.col >= MAX_COLS) {
+    line_break();
+   }
 }
 
-void scrollDown(int lines) {
+void scroll_down(int lines) {
   int r, c, i;
-  for(r = 0; r < 25; r++) {
-    for(c = 0; c < 80; c++) {
-      sp[r][c].attribute = screen_pointer->positions[r][c].attribute;
-      sp[r][c].character = screen_pointer->positions[r][c].character;
-    }
-  }
-  for(r = 0; r< 25 - lines; r++) {
+  for(r=0; r < MAX_ROWS-lines;r++) {
     i = r+lines;
-    for(c = 0; c < 80; c++) {
-      screen_pointer->positions[r][c].attribute = sp[i][c].attribute;
-      screen_pointer->positions[r][c].character = sp[i][c].character;
+    for(c=0; c < MAX_COLS; c++) {
+      screen_pointer->positions[r][c].attribute= screen_pointer->positions[i][c].attribute;
+      screen_pointer->positions[r][c].character = screen_pointer->positions[i][c].character;
     }
-
   }
-  for(r = 25-lines;r < 25; r++) {
-    for(c = 0; c < 80; c++) {
+  for(r=MAX_ROWS-lines; r < MAX_ROWS;r++) {
+    for(c=0; c < MAX_COLS; c++) {
       screen_pointer->positions[r][c].attribute = 7;
       screen_pointer->positions[r][c].character = ' ';
     }
   }
-}
-
-void write(char c) {
-  cursorForward();
-  screen_pointer->positions[cur.row][cur.col].character = c;
-  screen_pointer->positions[cur.row][cur.col].attribute = (cur.background << 4) + cur.foreground;
 }
 
 int code2rgb(int code) {
