@@ -1,102 +1,116 @@
 /*! \file
  *      \brief The second user program -
- *             You can add your own code here if you wish.
+ *             in a neverending loop, sends a message to process 0 and waits
+ *             for a reply. When the test case runs, there will be two
+ *             instances of this program running.
  */
 
 #include <scwrapper.h>
 
-/* Generates a pseduo random number */
-static inline unsigned long
-rnd(void)
-{
- const unsigned long  seed=101;
- static unsigned long memory;
+/* Define the debug messages to print on the console.
+   Since we don't know until run-time which process id this process has,
+   we defined them here and then modify the process number (the "n") later. */
 
- if ((memory==0) ||
-     (memory==1) ||
-     (memory==-1))
- {
-  memory=seed;
- }
+char findport_process_failed[]  = "process n: findport on my own port failed\n";
+char findport_process0_failed[] = "process n: findport for process 0 failed\n";
+char sending_ping[] 		    = "process n: sending ping\n";
+char send_failed[] 			    = "process n: send failed\n";
+char recv_failed[] 			    = "process n: receive failed\n";
+char recvd_pong[] 			    = "process n: received pong\n";
+char test_failed[] 			    = "process n: message test failed\n";
 
- memory=(9973*(~memory))+((memory)%701);
- return memory;
-}
-
-int
+void 
 main(int argc, char* argv[])
 {
- struct
- {
-  unsigned long addr;
-  unsigned long size;
- }              blocks[16];
- register int   clock;
- register long  total_memory_size=0;
+ long send_port, recv_port;
+ long my_pid;
+ char pidchar;
+ 
+ my_pid = getpid();
 
- /* Reset the information on the blocks */
- for(clock=0; clock<16; clock++)
+ if (my_pid<0)
  {
-  blocks[clock].addr=0;
+  prints("Can not get my PID!");
+  debugger();
  }
 
- clock=0;
+ /* Setup the strings, replacing "n" with the actual process identity. */
 
+ /* Convert my_pid to a character. */
+ pidchar = '0' + (char) my_pid;
+
+ /* And insert on the 9th place in the char arrays. */
+ findport_process_failed[8] 	= pidchar;
+ findport_process0_failed[8] 	= pidchar;
+ sending_ping[8] 				= pidchar;
+ send_failed[8] 				= pidchar;
+ recv_failed[8] 				= pidchar;
+ recvd_pong[8] 					= pidchar;
+ test_failed[8] 				= pidchar;
+
+ /* Get the port index for our own port 0. */ 
+ recv_port=findport(0,my_pid);
+ if (recv_port < 0)
+ {
+  prints(findport_process_failed);
+  debugger();
+ }
+
+ /* Get the port index for process 0's port 0. */
+ send_port=findport(0,0);
+ if (send_port < 0)
+ {
+  prints(findport_process0_failed);
+  debugger();
+ }
+
+ /* Go into an infinite loop, sending messages and waiting for replies. */
  while(1)
  {
-  long          addr;
-  unsigned int  flags=rnd()&3;
+  struct message msg;
+  unsigned long  sender, type;
 
-  /* randomize the size of a block. */
-  blocks[clock].size=(24*1024*1024-total_memory_size)*(rnd()&(256*256-1))/
-                     (256*256*8);
+  msg.quad_0=0;
+  msg.quad_1=1;
+  msg.quad_2=2;
+  msg.quad_3=3;
+  msg.quad_4=4;
+  msg.quad_5=5;
+  msg.quad_6=6;
+  msg.quad_7=7;
 
-  /* Sanity check the block size. */
-  if ((blocks[clock].size>0) &&
-      (blocks[clock].size<(1024*1024)))
+  prints(sending_ping);
+
+  if (ALL_OK != send(send_port, &msg))
   {
-   /* Try to allocate memory. */
-   addr=alloc(blocks[clock].size,flags);
-
-   /* Check if it was successful. */
-   if (addr<=0)
-   {
-    prints("Memory block allocate failed!\n");
-    break;
-   }
-   prints("Process ");
-   printhex(getpid());
-   prints(" [alloc] for addr ");
-   printhex(addr);
-   prints("\n");
-
-   /* Keep track of how much memory we have allocated... */
-   total_memory_size+=blocks[clock].size;
-   /* and the address. */
-   blocks[clock].addr=addr;
-  }
-  else
-  {
-   blocks[clock].addr=0;
+   prints(send_failed);
+   debugger();
   }
 
-  clock=(clock+1)&15;
-
-  /* Try to free one block. */
-  if (0 != blocks[clock].addr)
+  if ((ALL_OK != receive(recv_port, &msg, &sender, &type)) ||
+      (SYSCALL_MSG_SHORT != type) ||
+      (0 != sender))
   {
-   if (0 != free(blocks[clock].addr))
-   {
-    prints("Memory block free failed!\n");
-    break;
-   }
-   prints("Process ");
-   printhex(getpid());
-   prints(" [free]  for addr ");
-   printhex(blocks[clock].addr);
-   prints("\n");
-//   prints("*\n");
-   total_memory_size-=blocks[clock].size;
+   prints(recv_failed);
+   debugger();
   }
+
+  /* Test message validity. */
+  if ((7 != msg.quad_0) ||
+      (6 != msg.quad_1) ||
+      (5 != msg.quad_2) ||
+      (4 != msg.quad_3) ||
+      (3 != msg.quad_4) ||
+      (2 != msg.quad_5) ||
+      (1 != msg.quad_6) ||
+      (0 != msg.quad_7))
+  {
+   prints(test_failed);
+   debugger();
+  }
+
+  prints(recvd_pong);
+
+  debugger();
  }
 }

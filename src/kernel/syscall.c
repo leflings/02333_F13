@@ -5,6 +5,7 @@
  */
 
 #include "kernel.h"
+#include "sync.h"
 
 int
 system_call_implementation(void)
@@ -79,12 +80,11 @@ system_call_implementation(void)
 
 
       /* Allocate default port 0 */
-      // FIXME: Implement sync
-//      if(-1 == allocate_port(0,process_number)) {
-//              SYSCALL_ARGUMENTS.rax = ERROR;
-//              kprints("Ran out of ports or port is already allocated\n");
-//              break;
-//      }
+      if(-1 == allocate_port(0,process_number)) {
+              SYSCALL_ARGUMENTS.rax = ERROR;
+              kprints("Ran out of ports or port is already allocated\n");
+              break;
+      }
 
       // FIXME: Add sanity check
       thread_number = allocate_thread();
@@ -135,19 +135,26 @@ system_call_implementation(void)
     }
 
     /* Cleanup associated ports */
-//    for(i = 0; i < MAX_NUMBER_OF_PORTS; i++) {
-//            if(port_table[i].owner == owner_process) {
-//                    port_table[i].owner = -1;
-//                    /* If it has waiting threads, release them, set rax to ERROR
-//                     * and put them back in the ready queue
-//                     */
-//                    while(!thread_queue_is_empty(&port_table[i].sender_queue)) {
-//                            tmp_thread = thread_queue_dequeue(&port_table[i].sender_queue);
-//                            thread_table[tmp_thread].data.registers.integer_registers.rax = ERROR;
-//                            thread_queue_enqueue(&ready_queue,tmp_thread);
-//                    }
-//            }
-//    }
+    for(i = 0; i < MAX_NUMBER_OF_PORTS; i++) {
+        if(port_table[i].owner == owner_process) {
+          /* since owner cannot change, we grab the port lock, instead
+           * of port talbe lock
+           */
+            grab_lock_rw(&port_table[i].lock);
+            port_table[i].owner = -1;
+            /* If it has waiting threads, release them, set rax to ERROR
+             * and put them back in the ready queue
+             */
+            grab_lock_rw(&ready_queue_lock);
+            while(!thread_queue_is_empty(&port_table[i].sender_queue)) {
+                tmp_thread = thread_queue_dequeue(&port_table[i].sender_queue);
+                thread_table[tmp_thread].data.registers.integer_registers.rax = ERROR;
+                thread_queue_enqueue(&ready_queue,tmp_thread);
+            }
+            release_lock(&ready_queue_lock);
+            release_lock(&port_table[i].lock);
+        }
+    }
 
 
     release_lock(&thread_table_lock);
@@ -197,7 +204,7 @@ system_call_implementation(void)
         /* Receiving thread is no longer blocked, so we put it in the ready queue */
         grab_lock_rw(&ready_queue_lock);
         thread_queue_enqueue(&ready_queue, rcv_thread);
-        release(&ready_queue_lock);
+        release_lock(&ready_queue_lock);
 
         /* Update port to indicate to waiting receiver */
         port_table[port].receiver = -1;

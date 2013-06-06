@@ -9,6 +9,9 @@
 struct port
 port_table[MAX_NUMBER_OF_PORTS];
 
+volatile unsigned int
+port_table_lock = 0;
+
 void
 initialize_ports(void)
 {
@@ -19,6 +22,7 @@ initialize_ports(void)
  for(i=0; i<MAX_NUMBER_OF_PORTS; i++)
  {
   port_table[i].owner=-1;
+  port_table[i].lock=0;
  }
 }
 

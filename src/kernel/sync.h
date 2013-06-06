@@ -20,7 +20,7 @@ struct port
  
  int receiver; /*!< The identity of a thread which is blocked on a receive opereation. Set to -1 if no thread is receiving. */
 
- unsigned int lock;
+ volatile unsigned int lock;
 };
 
 extern struct port
