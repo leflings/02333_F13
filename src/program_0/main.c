@@ -10,38 +10,9 @@ void
 main(int argc, char* argv[])
 {
   int i = 0;
-//  prints("Running exec 0\n");
+  prints("Exec 0 start\n");
   if(0 != createprocess(1)) {
     prints("Creation of process 1 failed\n");
   }
-//  if(0 != createprocess(1)) {
-//    prints("Hej");
-//  }
-//  prints("Exec 0 finished\n");
-  while(1);
-//  if (0 != createprocess(1))
-//   {
-//    prints("createprocess of program 1 failed.\n");
-//    return;
-//   }
-//   if (0 != createprocess(2))
-//   {
-//    prints("createprocess of program 2 failed.\n");
-//    return;
-//   }
-//  if (0 != createprocess(1))
-//   {
-//    prints("createprocess of program 1 failed.\n");
-//    return;
-//   }
-//   if (0 != createprocess(2))
-//   {
-//    prints("createprocess of program 2 failed.\n");
-//    return;
-//   }
-//   while(1)
-//   {
-//    pause(100);
-//    prints("Ping\n");
-//   }
+  prints("Exec 0 finished\n");
 }

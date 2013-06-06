@@ -1,5 +1,5 @@
 # The following variable Optimization options
-OPTIMIZATIONFLAGS ?= -O3
+OPTIMIZATIONFLAGS ?= -O0
 
 # The following variable holds compiler options
 CFLAGS = -pedantic -mno-sse -mno-mmx -msoft-float -fno-exceptions -fno-common -Isrc/include -g -ggdb

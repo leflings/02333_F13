@@ -1285,37 +1285,10 @@ interrupt_dispatcher(const unsigned long interrupt_number)
 
   case 240:
   {
-      int next_thread;
    /* Dummy IPI handler. */
-//   scheduler_called_from_system_call_handler(1);
-
-    if(get_current_thread() == -1) {
-
-      grab_lock_rw(&ready_queue_lock);
-      /* either we'll get next thread or we'll get -1
-       * no need to check for empty and/or then dequeue */
-      next_thread = thread_queue_dequeue(&ready_queue);
-      release_lock(&ready_queue_lock);
-
-
-
-      if(next_thread != -1)
-      {
-        CPU_private_table[get_processor_index()].thread_index = next_thread;
-        CPU_private_table[get_processor_index()].page_table_root = process_table[thread_table[next_thread].data.owner].page_table_root;
-        CPU_private_table[get_processor_index()].ticks_left_of_time_slice = 10;
-#if DEBUG_ON
-        kprints("Interrupted schedule on CPU: ");
-        kprinthex(get_processor_index());
-        kprints(" -> thread: ");
-        kprinthex(next_thread);
-        kprints("\n");
-#endif
-      } else {
-        kprints("Woken CPU got no thread\n");
-      }
-    }
-
+   if(get_current_thread() == -1) {
+     scheduler_called_from_system_call_handler(1);
+   }
    break;
   }
 
