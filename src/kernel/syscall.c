@@ -158,9 +158,90 @@ system_call_implementation(void)
 
   }
 
-  /* Do not touch any lines above or including this line. */
+  case SYSCALL_SEND:
+    {
+      short port = SYSCALL_ARGUMENTS.rdi;
+      struct message *msg_ptr = (struct message *) SYSCALL_ARGUMENTS.rbx;
+      int rcv_thread;
+      if(SYSCALL_ARGUMENTS.rsi != SYSCALL_MSG_SHORT) {
+        SYSCALL_ARGUMENTS.rax = ERROR;
+        break;
+      }
 
-  /* Add the implementation of more system calls here. */
+      grab_lock_rw(&port_table[port].lock);
+      rcv_thread = port_table[port].receiver;
+
+      /* Check if receiving thread is ready to receive */
+      if(rcv_thread == -1) {
+        /* If no thread is ready to receive, we queue sending thread on the port
+         * belonging to the receiving thread */
+        thread_queue_enqueue(&port_table[port].sender_queue, get_current_thread());
+
+        /* We also save the message pointer on it's execution context, so that
+         * the receiving thread can pick it up later */
+        thread_table[get_current_thread()].data.registers.integer_registers.rbx = msg_ptr;
+
+        /* Sending thread is now blocked, so we must schedule */
+        schedule = 1;
+      } else {
+        /* Receiving thread is already in a blocked state, waiting for a message */
+
+
+        /* We copy the message from sender to receiver */
+        *(struct message *)thread_table[rcv_thread].data.registers.integer_registers.rbx = *msg_ptr;
+
+        /* Set the appropriate registers */
+        thread_table[rcv_thread].data.registers.integer_registers.rax = ALL_OK;
+        thread_table[rcv_thread].data.registers.integer_registers.rsi = SYSCALL_ARGUMENTS.rsi;
+
+        /* Receiving thread is no longer blocked, so we put it in the ready queue */
+        grab_lock_rw(&ready_queue_lock);
+        thread_queue_enqueue(&ready_queue, rcv_thread);
+        release(&ready_queue_lock);
+
+        /* Update port to indicate to waiting receiver */
+        port_table[port].receiver = -1;
+        SYSCALL_ARGUMENTS.rax = ALL_OK;
+      }
+      release_lock(&port_table[port].lock);
+
+      break;
+    }
+
+    case SYSCALL_RECEIVE:
+    {
+      short port = SYSCALL_ARGUMENTS.rdi;
+      struct message *msg_ptr = (struct message *) SYSCALL_ARGUMENTS.rbx;
+      int send_thread;
+      if(SYSCALL_ARGUMENTS.rsi != SYSCALL_MSG_SHORT) {
+        SYSCALL_ARGUMENTS.rax = ERROR;
+        break;
+      }
+
+      /* This is pretty much the same as for the send system call, just sort of
+       * reversed
+       */
+      grab_lock_rw(&port_table[port].lock);
+      if(thread_queue_is_empty(&port_table[port].sender_queue)) {
+        port_table[port].receiver = get_current_thread();
+        thread_table[get_current_thread()].data.registers.integer_registers.rbx = msg_ptr;
+        schedule = 1;
+      } else {
+        send_thread = thread_queue_dequeue(&port_table[port].sender_queue);
+
+        thread_table[send_thread].data.registers.integer_registers.rax = ALL_OK;
+        *msg_ptr = *(struct message *) thread_table[send_thread].data.registers.integer_registers.rbx;
+
+        grab_lock_rw(&ready_queue_lock);
+        thread_queue_enqueue(&ready_queue, send_thread);
+        release_lock(&ready_queue_lock);
+
+        SYSCALL_ARGUMENTS.rdi = thread_table[send_thread].data.owner;
+        SYSCALL_ARGUMENTS.rax = ALL_OK;
+      }
+      release_lock(&port_table[port].lock);
+      break;
+    }
 
 
   /* Do not touch any lines below or including this line. */

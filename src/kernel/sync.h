@@ -19,6 +19,8 @@ struct port
  struct thread_queue sender_queue; /*!< The queue of threads which are blocked on a send operation */
  
  int receiver; /*!< The identity of a thread which is blocked on a receive opereation. Set to -1 if no thread is receiving. */
+
+ unsigned int lock;
 };
 
 extern struct port
