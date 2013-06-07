@@ -86,7 +86,6 @@ system_call_implementation(void)
               break;
       }
 
-      // FIXME: Add sanity check
       thread_number = allocate_thread();
 
       if(thread_number == -1) {
