@@ -90,17 +90,19 @@ system_call_implementation(void)
     }
 
     thread_number = allocate_thread();
+    if(thread_number != -1) {
 
-    thread_table[thread_number].data.owner = process_number;
-    thread_table[thread_number].data.registers.integer_registers.rflags = 0x200;
-    thread_table[thread_number].data.registers.integer_registers.rip = 
-      prepare_process_ret_val.first_instruction_address;
+      thread_table[thread_number].data.owner = process_number;
+      thread_table[thread_number].data.registers.integer_registers.rflags = 0x200;
+      thread_table[thread_number].data.registers.integer_registers.rip =
+        prepare_process_ret_val.first_instruction_address;
 
-    process_table[process_number].threads += 1;
+      process_table[process_number].threads += 1;
 
-    SYSCALL_ARGUMENTS.rax = ALL_OK;
+      SYSCALL_ARGUMENTS.rax = ALL_OK;
+      thread_queue_enqueue(&ready_queue, thread_number);
+    }
 
-    thread_queue_enqueue(&ready_queue, thread_number);
     break;
   }
 
