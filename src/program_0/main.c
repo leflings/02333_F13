@@ -17,8 +17,10 @@ long empty_semaphore_handle;
 long mutex_semaphore_handle;
 long full_semaphore_handle;
 
+
 void consumer(void)
 {
+  char* chg_color = "\033[3_m";
  /* This is the consumer. */
  while(1)
  {
@@ -50,9 +52,11 @@ void consumer(void)
    prints("semaphoreup failed!\n");
    break;
   }
-
+  chg_color[3] = '1' + (value&7);
+  prints(chg_color);
   printhex(value);
   prints("\n");
+
  }
  terminate();
 }
