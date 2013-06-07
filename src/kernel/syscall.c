@@ -177,6 +177,8 @@ system_call_implementation(void)
       /* Set the appropriate registers */
       thread_table[rcv_thread].data.registers.integer_registers.rax = ALL_OK;
       thread_table[rcv_thread].data.registers.integer_registers.rsi = SYSCALL_ARGUMENTS.rsi;
+      thread_table[rcv_thread].data.registers.integer_registers.rdi =
+          thread_table[cpu_private_data.thread_index].data.owner;
 
       /* Receiving thread is no longer blocked, so we put it in the ready queue */
       thread_queue_enqueue(&ready_queue, rcv_thread);
