@@ -131,11 +131,11 @@ system_call_implementation(void)
     thread_table[get_current_thread()].data.owner = -1;
     if(--process_table[owner_process].threads < 1)
     {
+      /* last thread terminated - cleanup process */
       cleanup_process(owner_process);
-    }
-
     /* Cleanup associated ports */
-    for(i = 0; i < MAX_NUMBER_OF_PORTS; i++) {
+      for(i = 0; i < MAX_NUMBER_OF_PORTS; i++)
+      {
         if(port_table[i].owner == owner_process) {
           /* since owner cannot change, we grab the port lock, instead
            * of port talbe lock
@@ -154,8 +154,8 @@ system_call_implementation(void)
             release_lock(&ready_queue_lock);
             release_lock(&port_table[i].lock);
         }
+      }
     }
-
 
     release_lock(&thread_table_lock);
     release_lock(&process_table_lock);
@@ -247,6 +247,120 @@ system_call_implementation(void)
         release_lock(&ready_queue_lock);
       }
       release_lock(&port_table[port].lock);
+      break;
+    }
+
+    case SYSCALL_CREATETHREAD:
+    {
+      int thread_number;
+      int process_number;
+
+      grab_lock_rw(&process_table_lock);
+      grab_lock_rw(&thread_table_lock);
+      thread_number = allocate_thread();
+      if (thread_number == -1){
+            SYSCALL_ARGUMENTS.rax = ERROR;
+            kprints("Max number of threads reached\n");
+      }
+      else
+      {
+        process_number = thread_table[get_current_thread()].data.owner;
+
+        thread_table[thread_number].data.owner = process_number;
+        thread_table[thread_number].data.registers.integer_registers.rflags = 0x200;
+        thread_table[thread_number].data.registers.integer_registers.rip = SYSCALL_ARGUMENTS.rdi;
+        thread_table[thread_number].data.registers.integer_registers.rsp = SYSCALL_ARGUMENTS.rsi;
+
+        process_table[process_number].threads += 1;
+
+        SYSCALL_ARGUMENTS.rax = ALL_OK;
+
+        grab_lock_rw(&ready_queue_lock);
+        thread_queue_enqueue(&ready_queue, thread_number);
+        release_lock(&ready_queue_lock);
+      }
+      release_lock(&thread_table_lock);
+      release_lock(&process_table_lock);
+      break;
+    }
+
+    case SYSCALL_CREATESEMAPHORE:
+    {
+      int current_thread = get_current_thread();
+      int current_thread_owner = thread_table[current_thread].data.owner;
+
+
+      //Check rdi register
+      if (SYSCALL_ARGUMENTS.rdi < 0){
+              kprints("semaphore count can't be negative");
+              SYSCALL_ARGUMENTS.rax = ERROR;
+              break;
+      }
+      //Find a free entry in the semaphore table
+
+      grab_lock_rw(&semaphore_table_lock);
+      int i;
+      for (i = 0;; i++) {
+        if(i == MAX_NUMBER_OF_SEMAPHORES) {
+            kprints("No free entry in semaphore table");
+            SYSCALL_ARGUMENTS.rax = ERROR;
+        }
+        else if (semaphore_table[i].owner < 0)
+        {
+          semaphore_table[i].count = SYSCALL_ARGUMENTS.rdi;
+          //Set the owner of the semaphore
+          semaphore_table[i].owner = current_thread_owner;
+          //Handle to semaphore
+          SYSCALL_ARGUMENTS.rax = i;
+          break;
+        }
+      }
+      release_lock(&semaphore_table_lock);
+
+      break;
+    }
+
+    case SYSCALL_SEMAPHOREDOWN:
+    {
+      int current_thread = get_current_thread();
+      int current_thread_owner = thread_table[current_thread].data.owner;
+      struct semaphore* s = &semaphore_table[SYSCALL_ARGUMENTS.rdi];
+
+      grab_lock_rw(&s->lock);
+      if (s->owner != current_thread_owner)
+      {
+        kprints("ERROR! Process is not owner of semaphore");
+        SYSCALL_ARGUMENTS.rax = ERROR;
+      }
+      else
+      {
+        schedule = semaphoredown(s);
+        SYSCALL_ARGUMENTS.rax = ALL_OK;
+      }
+      release_lock(&s->lock);
+
+      break;
+    }
+
+    case SYSCALL_SEMAPHOREUP:
+    {
+      int current_thread = get_current_thread();
+      int current_thread_owner = thread_table[current_thread].data.owner;
+      struct semaphore* s = &semaphore_table[SYSCALL_ARGUMENTS.rdi];
+
+      grab_lock_rw(&s->lock);
+      if (s->owner != current_thread_owner)
+      {
+              kprints("ERROR! Process is not owner of semaphore");
+              SYSCALL_ARGUMENTS.rax = ERROR;
+      }
+      else
+      {
+        semaphoreup(s);
+        SYSCALL_ARGUMENTS.rax = ALL_OK;
+      }
+      release_lock(&s->lock);
+
       break;
     }
 

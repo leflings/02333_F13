@@ -7,6 +7,21 @@
 #include "threadqueue.h"
 
 #define MAX_NUMBER_OF_PORTS     (256)
+#define MAX_NUMBER_OF_SEMAPHORES (250)
+
+struct semaphore
+{
+  int owner;
+  int count;
+  struct thread_queue* blocked;
+  volatile unsigned int lock;
+};
+
+extern struct semaphore
+semaphore_table[MAX_NUMBER_OF_SEMAPHORES];
+
+extern volatile unsigned int
+semaphore_table_lock;
 
 /*! Describes a port. */
 struct port

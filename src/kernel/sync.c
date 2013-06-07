@@ -12,6 +12,12 @@ port_table[MAX_NUMBER_OF_PORTS];
 volatile unsigned int
 port_table_lock = 0;
 
+struct semaphore
+semaphore_table[MAX_NUMBER_OF_SEMAPHORES];
+
+volatile unsigned int
+semaphore_table_lock = 0;
+
 void
 initialize_ports(void)
 {
@@ -97,7 +103,56 @@ find_port(const unsigned long id, const int owner)
 void
 initialize_thread_synchronization(void)
 {
- /* In task 6, add code here. */
+  initialize_semaphores();
 }
+
+void
+initialize_semaphores(void)
+{
+  register int i;
+
+  /* Loop over all ports in the table and set the owner to -1 indicating a
+free port. */
+  for(i=0; i<MAX_NUMBER_OF_SEMAPHORES; i++)
+  {
+    semaphore_table[i].owner=-1;
+    semaphore_table[i].lock = 0;
+    thread_queue_init(&semaphore_table[i].blocked);
+  }
+}
+void
+semaphoreup(struct semaphore* s)
+{
+  if(!thread_queue_is_empty(&s->blocked))
+  {
+    int index = thread_queue_dequeue(&s->blocked);
+    thread_queue_enqueue(&ready_queue, index);
+  }
+  else
+  {
+    s->count++;
+  }
+}
+
+int
+semaphoredown(struct semaphore* s)
+{
+  if (s->count > 0)
+  {
+    s->count--;
+
+    return 0;
+  }
+  else
+  {
+    int blocked_thread = get_current_thread();
+    thread_queue_enqueue(&s->blocked,blocked_thread);
+
+    return 1;
+  }
+}
+
+
+
 
 /* Put any code you need to add to implement tasks B5, A5, B6 or A6 here. */
