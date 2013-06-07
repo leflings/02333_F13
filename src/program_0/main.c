@@ -12,6 +12,7 @@ int  head=0;
 int  tail=0;
 
 long  counter=0;
+  long value;
 
 long empty_semaphore_handle;
 long mutex_semaphore_handle;
@@ -25,7 +26,6 @@ void consumer(void)
  while(1)
  {
 
-  long value;
 
   if (ALL_OK != semaphoredown(full_semaphore_handle))
   {
@@ -40,6 +40,11 @@ void consumer(void)
 
   value=buffer[tail];
   tail=(tail+1)&15;
+  chg_color[3] = '0' + (value&7);
+  prints(chg_color);
+  printhex(value);
+  prints("\n");
+
 
   if (ALL_OK != semaphoreup(mutex_semaphore_handle))
   {
@@ -52,11 +57,6 @@ void consumer(void)
    prints("semaphoreup failed!\n");
    break;
   }
-  chg_color[3] = '1' + (value&7);
-  prints(chg_color);
-  printhex(value);
-  prints("\n");
-
  }
  terminate();
 }

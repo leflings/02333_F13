@@ -126,7 +126,9 @@ semaphoreup(struct semaphore* s)
   if(!thread_queue_is_empty(&s->blocked))
   {
     int index = thread_queue_dequeue(&s->blocked);
+    grab_lock_rw(&ready_queue_lock);
     thread_queue_enqueue(&ready_queue, index);
+    release_lock(&ready_queue_lock);
   }
   else
   {
