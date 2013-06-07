@@ -86,7 +86,6 @@ system_call_implementation(void)
               break;
       }
 
-      // FIXME: Add sanity check
       thread_number = allocate_thread();
 
       if(thread_number == -1) {
@@ -310,6 +309,7 @@ system_call_implementation(void)
           semaphore_table[i].count = SYSCALL_ARGUMENTS.rdi;
           //Set the owner of the semaphore
           semaphore_table[i].owner = current_thread_owner;
+          semaphore_table[i].lock = 0;
           //Handle to semaphore
           SYSCALL_ARGUMENTS.rax = i;
           break;
@@ -348,11 +348,10 @@ system_call_implementation(void)
       int current_thread_owner = thread_table[current_thread].data.owner;
       struct semaphore* s = &semaphore_table[SYSCALL_ARGUMENTS.rdi];
 
-      grab_lock_rw(&s->lock);
-      if (s->owner != current_thread_owner)
+      grab_lock_rw(&s->lock);      if (s->owner != current_thread_owner)
       {
-              kprints("ERROR! Process is not owner of semaphore");
-              SYSCALL_ARGUMENTS.rax = ERROR;
+        kprints("ERROR! Process is not owner of semaphore");
+        SYSCALL_ARGUMENTS.rax = ERROR;
       }
       else
       {

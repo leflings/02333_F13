@@ -11,8 +11,7 @@ long buffer[16];
 int  head=0;
 int  tail=0;
 
-long  counter=0;
-  long value;
+volatile long counter;
 
 long empty_semaphore_handle;
 long mutex_semaphore_handle;
@@ -22,6 +21,7 @@ long full_semaphore_handle;
 void consumer(void)
 {
   char* chg_color = "\033[3_m";
+long value;
  /* This is the consumer. */
  while(1)
  {
