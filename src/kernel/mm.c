@@ -76,7 +76,6 @@ kfree(const register unsigned long address)
       /* block is owned by current process*/
       && page_frame_table[pf].owner
         == thread_table[get_current_thread()].data.owner)
-    // TODO: Need read lock for thread table?
   {
     for(i = pf;
         i < MAX_NUMBER_OF_FRAMES && page_frame_table[i].start == pf;
