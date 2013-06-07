@@ -262,8 +262,12 @@ system_call_implementation(void)
 		}
 		//Find a free entry in the semaphore table
 		int i;
-		for (i = 0; i < MAX_NUMBER_OF_SEMAPHORES; i++) {
-			if (semaphore_table[i].owner < 0){
+		for (i = 0;; i++) {
+		  if(i == MAX_NUMBER_OF_SEMAPHORES) {
+		    break;
+		  }
+		  else if (semaphore_table[i].owner < 0)
+		  {
 				semaphore_table[i].count = SYSCALL_ARGUMENTS.rdi;
 				//Set the owner of the semaphore
 				semaphore_table[i].owner = current_thread_owner;
@@ -276,7 +280,7 @@ system_call_implementation(void)
 
 		}
 		//No free entry in semaphore table
-		if (i == 255){
+		if (i == MAX_NUMBER_OF_SEMAPHORES){
 			kprints("No free entry in semaphore table");
 			SYSCALL_ARGUMENTS.rax = ERROR;
 		}
