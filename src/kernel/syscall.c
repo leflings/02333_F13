@@ -91,16 +91,21 @@ system_call_implementation(void)
 
 		thread_number = allocate_thread();
 
-		thread_table[thread_number].data.owner = process_number;
-		thread_table[thread_number].data.registers.integer_registers.rflags = 0x200;
-		thread_table[thread_number].data.registers.integer_registers.rip =
-				prepare_process_ret_val.first_instruction_address;
+		if(thread_number != -1) {
+                  thread_table[thread_number].data.owner = process_number;
+                  thread_table[thread_number].data.registers.integer_registers.rflags = 0x200;
+                  thread_table[thread_number].data.registers.integer_registers.rip =
+                                  prepare_process_ret_val.first_instruction_address;
 
-		process_table[process_number].threads += 1;
+                  process_table[process_number].threads += 1;
 
-		SYSCALL_ARGUMENTS.rax = ALL_OK;
+                  SYSCALL_ARGUMENTS.rax = ALL_OK;
 
-		thread_queue_enqueue(&ready_queue, thread_number);
+                  thread_queue_enqueue(&ready_queue, thread_number);
+		} else {
+		  kprints("Thread allocation failed\n");
+		  SYSCALL_ARGUMENTS.rax = ERROR;
+		}
 		break;
 	}
 
@@ -122,22 +127,22 @@ system_call_implementation(void)
 
 		if(process_table[owner_process].threads < 1)
 		{
-			cleanup_process(owner_process);
-		}
+                  cleanup_process(owner_process);
 
-		/* Cleanup associated ports */
-		for(i = 0; i < MAX_NUMBER_OF_PORTS; i++) {
-			if(port_table[i].owner == owner_process) {
-				port_table[i].owner = -1;
-				/* If it has waiting threads, release them, set rax to ERROR
-				 * and put them back in the ready queue
-				 */
-				while(!thread_queue_is_empty(&port_table[i].sender_queue)) {
-					tmp_thread = thread_queue_dequeue(&port_table[i].sender_queue);
-					thread_table[tmp_thread].data.registers.integer_registers.rax = ERROR;
-					thread_queue_enqueue(&ready_queue,tmp_thread);
-				}
-			}
+                  /* Cleanup associated ports */
+                  for(i = 0; i < MAX_NUMBER_OF_PORTS; i++) {
+                          if(port_table[i].owner == owner_process) {
+                                  port_table[i].owner = -1;
+                                  /* If it has waiting threads, release them, set rax to ERROR
+                                   * and put them back in the ready queue
+                                   */
+                                  while(!thread_queue_is_empty(&port_table[i].sender_queue)) {
+                                          tmp_thread = thread_queue_dequeue(&port_table[i].sender_queue);
+                                          thread_table[tmp_thread].data.registers.integer_registers.rax = ERROR;
+                                          thread_queue_enqueue(&ready_queue,tmp_thread);
+                                  }
+                          }
+                  }
 		}
 
 		schedule = 1;
@@ -262,25 +267,25 @@ system_call_implementation(void)
 		}
 		//Find a free entry in the semaphore table
 		int i;
-		for (i = 0; i < MAX_NUMBER_OF_SEMAPHORES; i++) {
-			if (semaphore_table[i].owner < 0){
-				semaphore_table[i].count = SYSCALL_ARGUMENTS.rdi;
-				//Set the owner of the semaphore
-				semaphore_table[i].owner = current_thread_owner;
-				//Handle to semaphore
-				SYSCALL_ARGUMENTS.rax = i;
+		for (i = 0;; i++) {
+		  if(i == MAX_NUMBER_OF_SEMAPHORES)
+                  {
+                    kprints("No free entry in semaphore table");
+                    SYSCALL_ARGUMENTS.rax = ERROR;
+                    break;
+                  }
+		  else if (semaphore_table[i].owner < 0)
+                  {
+                    semaphore_table[i].count = SYSCALL_ARGUMENTS.rdi;
+                    //Set the owner of the semaphore
+                    semaphore_table[i].owner = current_thread_owner;
+                    //Handle to semaphore
+                    SYSCALL_ARGUMENTS.rax = i;
 
-
-				break;
-			}
+                    break;
+                  }
 
 		}
-		//No free entry in semaphore table
-		if (i == 255){
-			kprints("No free entry in semaphore table");
-			SYSCALL_ARGUMENTS.rax = ERROR;
-		}
-		break;
 	}
 
 	case SYSCALL_SEMAPHOREDOWN:
@@ -331,19 +336,20 @@ system_call_implementation(void)
           int current_thread = cpu_private_data.thread_index;
           int current_thread_owner = thread_table[current_thread].data.owner;
 
-          for(i = 0; i < MAX_NUMBER_OF_MUTEXES; i++) {
-            if(mutex_table[i].owner < 0) {
+          for(i = 0;; i++) {
+            if(i == MAX_NUMBER_OF_MUTEXES) {
+              SYSCALL_ARGUMENTS.rax = ERROR;
+              break;
+            }
+            else if(mutex_table[i].owner < 0) {
               mutex_table[i].owner = current_thread_owner;
               mutex_table[i].taken = 0;
               SYSCALL_ARGUMENTS.rax = i;
               break;
             }
           }
-
-          if(i == MAX_NUMBER_OF_MUTEXES) {
-            SYSCALL_ARGUMENTS.rax = ERROR;
-          }
           break;
+
         }
 
 	case SYSCALL_MUTEXLOCK:
@@ -351,16 +357,6 @@ system_call_implementation(void)
           int current_thread = cpu_private_data.thread_index;
           int current_thread_owner = thread_table[current_thread].data.owner;
           struct mutex* m = &mutex_table[SYSCALL_ARGUMENTS.rdi];
-
-          /*
-          kprints("LOCK Mutex[");
-          kprinthex(SYSCALL_ARGUMENTS.rdi);
-          kprints("] owner[");
-          kprinthex(m->owner);
-          kprints("] taken[");
-          kprinthex(m->taken);
-          kprints("]\n");
-          */
 
           if(m->owner != current_thread_owner) {
             kprints("ERROR! Mutex not owned by calling process\n");
@@ -384,16 +380,6 @@ system_call_implementation(void)
           int current_thread = cpu_private_data.thread_index;
           int current_thread_owner = thread_table[current_thread].data.owner;
           struct mutex* m = &mutex_table[SYSCALL_ARGUMENTS.rdi];
-
-          /*
-          kprints("UNLOCK Mutex[");
-          kprinthex(SYSCALL_ARGUMENTS.rdi);
-          kprints("] owner[");
-          kprinthex(m->owner);
-          kprints("] taken[");
-          kprinthex(m->taken);
-          kprints("]\n");
-          */
 
           if(m->owner != current_thread_owner) {
             kprints("ERROR! Mutex not owned by calling process\n");
@@ -423,15 +409,16 @@ system_call_implementation(void)
           int current_thread_owner = thread_table[current_thread].data.owner;
           int i;
 
-          for(i = 0; i < MAX_NUMBER_OF_COND_VAR; i++) {
-            if(cvar_table[i].owner < 0) {
+          for(i = 0;; i++) {
+            if(i == MAX_NUMBER_OF_COND_VAR) {
+              SYSCALL_ARGUMENTS.rax = ERROR;
+              break;
+            }
+            else if(cvar_table[i].owner < 0) {
               cvar_table[i].owner = current_thread_owner;
               SYSCALL_ARGUMENTS.rax = i;
               break;
             }
-          }
-          if(i == MAX_NUMBER_OF_COND_VAR) {
-            SYSCALL_ARGUMENTS.rax = ERROR;
           }
           break;
 
@@ -483,26 +470,11 @@ system_call_implementation(void)
             if(!m->taken) {
               m->taken = 1;
               thread_queue_enqueue(&ready_queue, i);
-              kprints("released\n");
             } else {
               thread_queue_enqueue(&m->blocked, i);
             }
           }
 
-          /*
-          while(!thread_queue_is_empty(&c->waiting)) {
-            i = thread_queue_head(&c->waiting);
-            m = &mutex_table[thread_table[i].data.list_data];
-            if(!m->taken) {
-              m->taken = 1;
-              thread_queue_enqueue(&ready_queue, thread_queue_dequeue(&c->waiting));
-              kprints("released\n");
-            } else {
-              kprints("ERROR! Mutex shouldnt be locked\n");
-              break;
-            }
-          }
-          */
           SYSCALL_ARGUMENTS.rax = ALL_OK;
           break;
         }
