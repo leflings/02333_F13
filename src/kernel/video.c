@@ -23,6 +23,7 @@ void
 kprints(const char* string)
 {
  /* Loop until we have found the null character. */
+ grab_lock_rw(&screen_lock);
  while(1)
  {
   register const char curr = *string++;
@@ -33,9 +34,10 @@ kprints(const char* string)
   }
   else
   {
-   return;
+    break;
   }
  }
+ release_lock(&screen_lock);
 }
 
 void
@@ -47,8 +49,10 @@ kprinthex(const register long value)
  /* Print each character of the hexadecimal number. This is a very inefficient
     way of printing hexadecimal numbers. It is, however, very compact in terms
     of the number of source code lines. */
+ grab_lock_rw(&screen_lock);
  for(i=15; i>=0; i--)
  {
   outb(0xe9, hex_helper[(value>>(i*4))&15]);
  }
+ release_lock(&screen_lock);
 }
