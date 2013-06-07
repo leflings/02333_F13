@@ -24,6 +24,16 @@ main(int argc, char* argv[])
   prints("process 0: Second instance of createprocess(1) failed\n");
   debugger();
  }
+ if (ALL_OK != createprocess(1))
+ {
+  prints("process 0: Third instance of createprocess(1) failed\n");
+  debugger();
+ }
+ if (ALL_OK != createprocess(1))
+ {
+  prints("process 0: Fourth instance of createprocess(1) failed\n");
+  debugger();
+ }
 
  /* Get the port index for our own port 0 */
  recv_port=findport(0,0);

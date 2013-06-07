@@ -225,7 +225,6 @@ system_call_implementation(void)
         SYSCALL_ARGUMENTS.rax = ERROR;
         break;
       }
-
       /* This is pretty much the same as for the send system call, just sort of
        * reversed
        */
