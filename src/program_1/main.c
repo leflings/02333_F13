@@ -18,6 +18,7 @@ char send_failed[] 			    = "process n: send failed\n";
 char recv_failed[] 			    = "process n: receive failed\n";
 char recvd_pong[] 			    = "process n: received pong\n";
 char test_failed[] 			    = "process n: message test failed\n";
+char receiving[] = "process n: receiving\n";
 
 void 
 main(int argc, char* argv[])
@@ -47,6 +48,7 @@ main(int argc, char* argv[])
  recv_failed[8] 				= pidchar;
  recvd_pong[8] 					= pidchar;
  test_failed[8] 				= pidchar;
+ receiving[8] = pidchar;
 
  /* Get the port index for our own port 0. */ 
  recv_port=findport(0,my_pid);
@@ -87,13 +89,14 @@ main(int argc, char* argv[])
    debugger();
   }
 
+  prints(receiving);
   if ((ALL_OK != receive(recv_port, &msg, &sender, &type)) ||
       (SYSCALL_MSG_SHORT != type) ||
       (0 != sender))
   {
    prints(recv_failed);
    printhex(sender);
-   printhex(type);
+   prints("\n");
    debugger();
   }
 
